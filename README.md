@@ -1,3 +1,18 @@
+<<<<<<< HEAD
+
+---
+title: Docmind
+emoji: 🐨
+colorFrom: indigo
+colorTo: red
+sdk: docker
+pinned: false
+---
+
+Check out the configuration reference at https://huggingface.co/docs/hub/spaces-config-reference
+
+=======
+
 # 🧠 DocMind - AI-Powered RAG Document Assistant
 
 A production-ready document Q&A system built with LangChain, ChromaDB, and OpenAI. Upload PDFs, ask questions, and get answers with page-level citations and confidence scores. Supports both OpenAI cloud models and local Ollama models.
@@ -171,3 +186,5 @@ ChromaDB returns cosine similarity scores for each retrieved chunk. DocMind conv
 ## Skills Demonstrated
 
 `RAG` `LangChain` `ChromaDB` `Hybrid Search` `BM25` `Vector Embeddings` `OpenAI API` `Ollama` `Local LLMs` `Streamlit` `Prompt Engineering` `Conversational Memory` `Semantic Search` `Docker` `pytest` `Python`
+
+>>>>>>> e8dde5e437d039c31539505ee4bf0458e430a0b3

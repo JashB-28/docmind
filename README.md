@@ -1,4 +1,4 @@
-# 🧠 DocMind — AI-Powered RAG Document Assistant
+# 🧠 DocMind - AI-Powered RAG Document Assistant
 
 A production-ready document Q&A system built with LangChain, ChromaDB, and OpenAI. Upload PDFs, ask questions, and get answers with page-level citations and confidence scores. Supports both OpenAI cloud models and local Ollama models.
 
@@ -6,16 +6,16 @@ A production-ready document Q&A system built with LangChain, ChromaDB, and OpenA
 
 ## Features
 
-- **Multi-PDF support** — Upload and index multiple PDFs at once
-- **Hybrid search** — Combines semantic vector search + BM25 keyword search for better retrieval
-- **Conversational memory** — Remembers context across follow-up questions
-- **Confidence scores** — Every answer includes a retrieval confidence % per source
-- **Page-level citations** — Know exactly which page of which document the answer came from
-- **Document comparison** — Ask the same question across two documents side by side
-- **Summarization** — Generate structured summaries in multiple styles
-- **Flexible model selection** — Use OpenAI (GPT-4o, GPT-4o-mini) or local Ollama models (Mistral, Llama3, etc.)
-- **Dockerized** — Ready to deploy on Hugging Face Spaces or any cloud platform
-- **Automated tests** — RAG pipeline validated with pytest + LLM-as-judge pattern
+- **Multi-PDF support** - Upload and index multiple PDFs at once
+- **Hybrid search** - Combines semantic vector search + BM25 keyword search for better retrieval
+- **Conversational memory** - Remembers context across follow-up questions
+- **Confidence scores** - Every answer includes a retrieval confidence % per source
+- **Page-level citations** - Know exactly which page of which document the answer came from
+- **Document comparison** - Ask the same question across two documents side by side
+- **Summarization** - Generate structured summaries in multiple styles
+- **Flexible model selection** - Use OpenAI (GPT-4o, GPT-4o-mini) or local Ollama models (Mistral, Llama3, etc.)
+- **Dockerized** - Ready to deploy on Hugging Face Spaces or any cloud platform
+- **Automated tests** - RAG pipeline validated with pytest + LLM-as-judge pattern
 
 ---
 
@@ -139,7 +139,7 @@ docker run -p 7860:7860 -e OPENAI_API_KEY=your-key docmind
 pytest test_rag.py -v
 ```
 
-Tests use an LLM-as-judge pattern — OpenAI evaluates whether the RAG answer matches the expected response.
+Tests use an LLM-as-judge pattern - OpenAI evaluates whether the RAG answer matches the expected response.
 
 ---
 
@@ -147,9 +147,9 @@ Tests use an LLM-as-judge pattern — OpenAI evaluates whether the RAG answer ma
 
 ChromaDB returns cosine similarity scores for each retrieved chunk. DocMind converts these to a human-readable confidence percentage:
 
-- 🟢 **70%+** — High confidence, strong semantic match
-- 🟡 **40–69%** — Medium confidence, partial match
-- 🔴 **<40%** — Low confidence, weak match
+- 🟢 **70%+** - High confidence, strong semantic match
+- 🟡 **40–69%** - Medium confidence, partial match
+- 🔴 **<40%** - Low confidence, weak match
 
 ---
 

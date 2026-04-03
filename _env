@@ -1,0 +1,13 @@
+# ── LLM & Embedding backend ──────────────────────────────────────────────────
+# Set to "openai" for cloud or "ollama" for local
+LLM_BACKEND=openai
+EMBEDDING_BACKEND=openai
+
+# ── OpenAI ────────────────────────────────────────────────────────────────────
+OPENAI_API_KEY=sk-...
+OPENAI_LLM_MODEL=gpt-4o-mini
+OPENAI_EMBEDDING_MODEL=text-embedding-3-small
+
+# ── Ollama (only needed if switching to ollama backend) ───────────────────────
+OLLAMA_LLM_MODEL=mistral
+OLLAMA_EMBEDDING_MODEL=nomic-embed-text

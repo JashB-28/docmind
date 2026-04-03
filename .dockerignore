@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+
+# Environment
+.env
+docmind/
+knowledgebaseenv/
+venv/
+env/
+
+# Data and DB — don't bake into image; mount as volumes
+data/
+chroma/
+
+# Dev tools
+.vscode/
+.git/
+*.md
+
+# Conda/pip artifacts
+*.egg-info/
+dist/
+build/

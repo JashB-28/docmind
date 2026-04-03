@@ -1,0 +1,13 @@
+# Environment
+.env
+docmind/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Data and DB — don't commit these
+data/
+chroma/
+
+# VS Code
+.vscode/

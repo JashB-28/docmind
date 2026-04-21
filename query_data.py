@@ -1,14 +1,14 @@
 import os
+import json
+import argparse
 from dotenv import load_dotenv
 from langchain_chroma import Chroma
 from langchain_community.retrievers import BM25Retriever
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.documents import Document as LCDocument
-from get_embedding_function import get_embedding_function
+from get_embedding_function import get_chroma_path, get_embedding_function
 
 load_dotenv()
-
-CHROMA_PATH = "chroma"
 
 PROMPT_TEMPLATE = """
 You are a helpful assistant. Use the following context extracted from documents to answer the question.
@@ -30,8 +30,7 @@ def get_llm(model_name: str = None, api_key: str = ""):
     if model_name:
         if model_name.startswith("gpt"):
             from langchain_openai import ChatOpenAI
-            key = api_key or os.getenv("OPENAI_API_KEY", "")
-            return ChatOpenAI(model=model_name, api_key=key), "openai"
+            return ChatOpenAI(model=model_name, api_key=api_key), "openai"
         else:
             from langchain_ollama import OllamaLLM
             return OllamaLLM(model=model_name), "ollama"
@@ -48,9 +47,18 @@ def get_llm(model_name: str = None, api_key: str = ""):
     ), "openai"
 
 
-def query_rag(query_text: str, model_name: str = None, chat_history: str = "", api_key: str = ""):
-    embedding_function = get_embedding_function()
-    db = Chroma(persist_directory=CHROMA_PATH, embedding_function=embedding_function)
+def query_rag(
+    query_text: str,
+    model_name: str = None,
+    chat_history: str = "",
+    api_key: str = "",
+    embedding_backend: str = "openai",
+):
+    embedding_function = get_embedding_function(backend=embedding_backend, api_key=api_key)
+    db = Chroma(
+        persist_directory=get_chroma_path(embedding_backend),
+        embedding_function=embedding_function,
+    )
 
     # --- Hybrid search: vector + BM25 (manual merge, no EnsembleRetriever) ---
     all_docs = db.get(include=["documents", "metadatas"])
@@ -133,3 +141,26 @@ def query_rag(query_text: str, model_name: str = None, chat_history: str = "", a
         "sources": sources,
         "raw_sources": [doc.metadata.get("id") for doc in unique_docs],
     }
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--query-text", required=True)
+    parser.add_argument("--model-name", default="")
+    parser.add_argument("--chat-history", default="")
+    parser.add_argument("--api-key", default="")
+    parser.add_argument("--embedding-backend", default="openai")
+    args = parser.parse_args()
+
+    result = query_rag(
+        query_text=args.query_text,
+        model_name=args.model_name or None,
+        chat_history=args.chat_history,
+        api_key=args.api_key,
+        embedding_backend=args.embedding_backend,
+    )
+    print(json.dumps(result))
+
+
+if __name__ == "__main__":
+    main()

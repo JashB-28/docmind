@@ -7,6 +7,8 @@ import json
 import subprocess
 import sys
 import tempfile
+import urllib.error
+import urllib.request
 
 import streamlit as st
 from langchain_community.document_loaders import PyPDFLoader
@@ -72,10 +74,10 @@ defaults = {
     "chat_history": [],
     "docs_loaded": {"openai": [], "ollama": []},
     "mode": "chat",
-    "provider": "ollama",
-    "openai_model_name": "gpt-4o-mini",
-    "ollama_model_name": "mistral",
-    "openai_api_key": "",
+    "provider": os.getenv("LLM_BACKEND", "openai").lower(),
+    "openai_model_name": os.getenv("OPENAI_LLM_MODEL", "gpt-4o-mini"),
+    "ollama_model_name": os.getenv("OLLAMA_LLM_MODEL", "mistral"),
+    "openai_api_key": os.getenv("OPENAI_API_KEY", ""),
 }
 for key, val in defaults.items():
     if key not in st.session_state:
@@ -112,6 +114,30 @@ def provider_requires_api_key() -> bool:
     return get_active_provider() == "openai"
 
 
+def get_ollama_models():
+    try:
+        with urllib.request.urlopen("http://127.0.0.1:11434/api/tags", timeout=2) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except urllib.error.URLError as exc:
+        return None, f"Ollama is not reachable at http://127.0.0.1:11434 ({exc.reason})."
+    except Exception as exc:
+        return None, f"Could not read Ollama model list: {exc}"
+
+    models = {
+        model.get("model", "").split(":", 1)[0]
+        for model in payload.get("models", [])
+        if model.get("model")
+    }
+    return models, ""
+
+
+def format_command_failure(exc: subprocess.CalledProcessError) -> str:
+    stderr = (exc.stderr or "").strip()
+    stdout = (exc.stdout or "").strip()
+    details = stderr or stdout or str(exc)
+    return f"Command failed with exit code {exc.returncode}: {details}"
+
+
 def confidence_badge(conf: int) -> str:
     if conf >= 70:
         return f'<span class="conf-high">🟢 {conf}%</span>'
@@ -140,7 +166,43 @@ def ensure_provider_ready() -> bool:
     if provider_requires_api_key() and not get_api_key():
         st.error("No API key provided. Add one in the OpenAI tab before using OpenAI.")
         return False
+
+    if get_active_provider() == "ollama":
+        models, error = get_ollama_models()
+        if models is None:
+            st.error(
+                "Ollama is selected, but no local Ollama server is available. "
+                f"{error}"
+            )
+            return False
+
+        required_models = {
+            get_active_model(),
+            os.getenv("OLLAMA_EMBEDDING_MODEL", "nomic-embed-text"),
+        }
+        missing_models = sorted(model for model in required_models if model not in models)
+        if missing_models:
+            st.error(
+                "Ollama is running, but required models are missing: "
+                + ", ".join(missing_models)
+                + ". Pull them first with `ollama pull <model>`."
+            )
+            return False
+
     return True
+
+
+def run_checked_command(command: list[str]) -> subprocess.CompletedProcess:
+    try:
+        return subprocess.run(
+            command,
+            cwd=os.getcwd(),
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+    except subprocess.CalledProcessError as exc:
+        raise RuntimeError(format_command_failure(exc)) from exc
 
 
 def index_documents_for_provider(provider: str, api_key: str) -> int:
@@ -148,13 +210,7 @@ def index_documents_for_provider(provider: str, api_key: str) -> int:
     if provider == "openai":
         command.extend(["--api-key", api_key])
 
-    result = subprocess.run(
-        command,
-        cwd=os.getcwd(),
-        capture_output=True,
-        text=True,
-        check=True,
-    )
+    result = run_checked_command(command)
 
     output = result.stdout.strip().splitlines()
     for line in reversed(output):
@@ -180,13 +236,7 @@ def run_chat_query(query_text: str, model_name: str, chat_history: str, api_key:
         embedding_backend,
     ]
 
-    result = subprocess.run(
-        command,
-        cwd=os.getcwd(),
-        capture_output=True,
-        text=True,
-        check=True,
-    )
+    result = run_checked_command(command)
 
     return json.loads(result.stdout)
 

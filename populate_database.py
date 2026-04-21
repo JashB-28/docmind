@@ -5,23 +5,24 @@ from langchain_community.document_loaders import PyPDFDirectoryLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.documents import Document
 from langchain_chroma import Chroma
-from get_embedding_function import get_embedding_function
+from get_embedding_function import get_chroma_path, get_embedding_function
 
-CHROMA_PATH = "chroma"
 DATA_PATH = "data"
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--reset", action="store_true", help="Reset the database.")
+    parser.add_argument("--backend", choices=["openai", "ollama"], default=os.getenv("EMBEDDING_BACKEND", "openai"))
+    parser.add_argument("--api-key", default="", help="API key to use for OpenAI embeddings.")
     args = parser.parse_args()
     if args.reset:
         print("Clearing Database")
-        clear_database()
+        clear_database(get_chroma_path(args.backend))
 
     documents = load_documents()
     chunks = split_documents(documents)
-    count = add_to_chroma(chunks)
+    count = add_to_chroma(chunks, embedding_backend=args.backend, api_key=args.api_key)
     print(f"Done. Total chunks in DB: {count}")
 
 
@@ -44,10 +45,11 @@ def split_documents(documents: list[Document]):
     return chunks
 
 
-def add_to_chroma(chunks: list[Document]):
+def add_to_chroma(chunks: list[Document], embedding_backend: str = "openai", api_key: str = ""):
+    chroma_path = get_chroma_path(embedding_backend)
     db = Chroma(
-        persist_directory=CHROMA_PATH,
-        embedding_function=get_embedding_function(),
+        persist_directory=chroma_path,
+        embedding_function=get_embedding_function(backend=embedding_backend, api_key=api_key),
         collection_metadata={"hnsw:space": "cosine"},
     )
 
@@ -88,16 +90,17 @@ def calculate_chunk_ids(chunks: list[Document]):
     return chunks
 
 
-def clear_database():
+def clear_database(chroma_path: str | None = None):
     import chromadb
-    if os.path.exists(CHROMA_PATH):
+    target_path = chroma_path or get_chroma_path()
+    if os.path.exists(target_path):
         try:
-            client = chromadb.PersistentClient(path=CHROMA_PATH)
+            client = chromadb.PersistentClient(path=target_path)
             for collection in client.list_collections():
                 client.delete_collection(collection.name)
         except Exception:
             pass
-        shutil.rmtree(CHROMA_PATH, ignore_errors=True)
+        shutil.rmtree(target_path, ignore_errors=True)
         print("Database cleared")
 
 

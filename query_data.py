@@ -6,7 +6,11 @@ from langchain_chroma import Chroma
 from langchain_community.retrievers import BM25Retriever
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.documents import Document as LCDocument
-from get_embedding_function import get_chroma_path, get_embedding_function
+from get_embedding_function import (
+    get_chroma_path,
+    get_embedding_function,
+    get_ollama_base_url,
+)
 
 load_dotenv()
 
@@ -33,12 +37,15 @@ def get_llm(model_name: str = None, api_key: str = ""):
             return ChatOpenAI(model=model_name, api_key=api_key), "openai"
         else:
             from langchain_ollama import OllamaLLM
-            return OllamaLLM(model=model_name), "ollama"
+            return OllamaLLM(model=model_name, base_url=get_ollama_base_url()), "ollama"
 
     backend = os.getenv("LLM_BACKEND", "openai").lower()
     if backend == "ollama":
         from langchain_ollama import OllamaLLM
-        return OllamaLLM(model=os.getenv("OLLAMA_LLM_MODEL", "mistral")), "ollama"
+        return OllamaLLM(
+            model=os.getenv("OLLAMA_LLM_MODEL", "mistral"),
+            base_url=get_ollama_base_url(),
+        ), "ollama"
 
     from langchain_openai import ChatOpenAI
     return ChatOpenAI(

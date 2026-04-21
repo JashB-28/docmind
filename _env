@@ -9,5 +9,6 @@ OPENAI_LLM_MODEL=gpt-4o-mini
 OPENAI_EMBEDDING_MODEL=text-embedding-3-small
 
 # ── Ollama (only needed if switching to ollama backend) ───────────────────────
+OLLAMA_BASE_URL=http://127.0.0.1:11434
 OLLAMA_LLM_MODEL=mistral
 OLLAMA_EMBEDDING_MODEL=nomic-embed-text

@@ -14,7 +14,11 @@ import streamlit as st
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_core.prompts import ChatPromptTemplate
 
-from get_embedding_function import get_chroma_path, get_embedding_function
+from get_embedding_function import (
+    get_chroma_path,
+    get_embedding_function,
+    get_ollama_base_url,
+)
 from populate_database import clear_database
 
 
@@ -115,11 +119,12 @@ def provider_requires_api_key() -> bool:
 
 
 def get_ollama_models():
+    base_url = get_ollama_base_url().rstrip("/")
     try:
-        with urllib.request.urlopen("http://127.0.0.1:11434/api/tags", timeout=2) as response:
+        with urllib.request.urlopen(f"{base_url}/api/tags", timeout=2) as response:
             payload = json.loads(response.read().decode("utf-8"))
     except urllib.error.URLError as exc:
-        return None, f"Ollama is not reachable at http://127.0.0.1:11434 ({exc.reason})."
+        return None, f"Ollama is not reachable at {base_url} ({exc.reason})."
     except Exception as exc:
         return None, f"Could not read Ollama model list: {exc}"
 
@@ -296,7 +301,10 @@ def query_filtered(query: str, filename: str, model_name: str) -> dict:
     else:
         from langchain_ollama import OllamaLLM
 
-        answer = OllamaLLM(model=model_name).invoke(prompt)
+        answer = OllamaLLM(
+            model=model_name,
+            base_url=get_ollama_base_url(),
+        ).invoke(prompt)
 
     score_map = {doc.metadata.get("id", doc.page_content[:50]): score for doc, score in vector_results}
 
@@ -354,7 +362,10 @@ with st.sidebar:
             st.warning("No API key provided.")
     else:
         st.selectbox("Ollama model", OLLAMA_MODELS, key="ollama_model_name")
-        st.caption("Ollama uses your local runtime, so no OpenAI API key is needed here.")
+        st.caption(
+            f"Ollama endpoint: `{get_ollama_base_url()}`. "
+            "No OpenAI API key is needed when Ollama is selected."
+        )
 
     active_provider = get_active_provider()
     active_model = get_active_model()
@@ -595,7 +606,10 @@ elif st.session_state.mode == "summarize":
                 else:
                     from langchain_ollama import OllamaLLM
 
-                    summary = OllamaLLM(model=model_name).invoke(prompt)
+                    summary = OllamaLLM(
+                        model=model_name,
+                        base_url=get_ollama_base_url(),
+                    ).invoke(prompt)
 
                 os.unlink(tmp_path)
 

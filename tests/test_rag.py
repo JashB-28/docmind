@@ -1,11 +1,11 @@
-"""
+﻿"""
 RAG evaluation tests.
 
 Uses OpenAI as the evaluator judge by default (set OPENAI_API_KEY in .env).
 To switch to Ollama as judge, set EVAL_MODEL=ollama in .env.
 
 To run:
-    pytest test_rag.py -v
+    pytest tests -v
 """
 
 import os
@@ -14,6 +14,16 @@ from dotenv import load_dotenv
 from query_data import query_rag
 
 load_dotenv()
+
+# These tests hit Pinecone and an LLM, so skip everything when keys are missing.
+pytestmark = pytest.mark.skipif(
+    not os.getenv("PINECONE_API_KEY", "").strip()
+    or (
+        os.getenv("LLM_BACKEND", "openai").lower() == "openai"
+        and not os.getenv("OPENAI_API_KEY", "").strip()
+    ),
+    reason="PINECONE_API_KEY (and OPENAI_API_KEY for the openai backend) must be set in .env",
+)
 
 EVAL_PROMPT = """
 Expected Response: {expected_response}
@@ -58,16 +68,16 @@ def evaluate(question: str, expected_response: str) -> bool:
     print(f"Scores:   {[s['confidence'] for s in result['sources']]}")
 
     if "true" in verdict:
-        print("\033[92m✅ PASS\033[0m")
+        print("\033[92mâœ… PASS\033[0m")
         return True
     elif "false" in verdict:
-        print("\033[91m❌ FAIL\033[0m")
+        print("\033[91mâŒ FAIL\033[0m")
         return False
     else:
         raise ValueError(f"Evaluator returned unexpected verdict: {verdict!r}")
 
 
-# ── Smoke tests — work with any document corpus ───────────────────────────────
+# â”€â”€ Smoke tests â€” work with any document corpus â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 class TestGenericRetrieval:
 
     def test_retrieval_returns_answer(self):
@@ -89,7 +99,7 @@ class TestGenericRetrieval:
         assert result["answer"]
 
 
-# ── Domain-specific tests — fill in Q&A pairs for your documents ──────────────
+# â”€â”€ Domain-specific tests â€” fill in Q&A pairs for your documents â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 class TestResearchPapers:
     """
     def test_abstract_summary(self):

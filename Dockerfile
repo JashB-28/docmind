@@ -20,11 +20,12 @@ COPY app.py .
 COPY query_data.py .
 COPY populate_database.py .
 COPY get_embedding_function.py .
+COPY vector_store.py .
 
-# ── Create data and chroma directories ───────────────────────────────────────
-# data/   → users upload PDFs here at runtime
-# chroma/ → vector DB persists here (mount a volume in production)
-RUN mkdir -p data chroma
+# ── Create runtime directories ────────────────────────────────────────────────
+# data/        → users upload PDFs here at runtime
+# bm25_corpus/ → local keyword-search cache (vectors live in Pinecone)
+RUN mkdir -p data bm25_corpus
 
 # ── Streamlit config ──────────────────────────────────────────────────────────
 RUN mkdir -p /app/.streamlit

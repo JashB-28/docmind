@@ -2,22 +2,24 @@ import os
 import json
 import argparse
 from dotenv import load_dotenv
-from langchain_chroma import Chroma
 from langchain_community.retrievers import BM25Retriever
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.documents import Document as LCDocument
-from get_embedding_function import (
-    get_chroma_path,
-    get_embedding_function,
-    get_ollama_base_url,
-)
+from get_embedding_function import get_ollama_base_url
+from vector_store import get_vector_store, load_corpus
 
 load_dotenv()
 
 PROMPT_TEMPLATE = """
-You are a helpful assistant. Use the following context extracted from documents to answer the question.
-If the answer is not in the context, say "I couldn't find that in the provided documents."
-Do not make up information.
+You are a helpful assistant answering questions about the user's documents using the context below.
+
+Rules:
+- Base your answer only on the context; do not use outside knowledge.
+- Synthesize across excerpts: combine, list, or count information that is spread over multiple excerpts.
+- If the context answers the question only partially or indirectly, give the best answer you can from
+  what is there, and briefly note what the excerpts do not specify.
+- Be specific: quote figures, names, and dates exactly as they appear.
+- Only reply "I couldn't find that in the provided documents." if the context contains nothing
+  related to the question at all.
 
 Conversation so far:
 {history}
@@ -28,6 +30,10 @@ Context from documents:
 Question: {question}
 
 Answer:"""
+
+# Pinecone returns cosine similarity (higher = better). Scores at or above this
+# value are treated as a 100% retrieval match for the confidence display.
+FULL_CONFIDENCE_SIMILARITY = 0.75
 
 
 def get_llm(model_name: str = None, api_key: str = ""):
@@ -54,51 +60,59 @@ def get_llm(model_name: str = None, api_key: str = ""):
     ), "openai"
 
 
+def similarity_to_confidence(score: float) -> int:
+    return round(max(0.0, min(score / FULL_CONFIDENCE_SIMILARITY, 1.0)) * 100)
+
+
+def chunk_key(doc) -> str:
+    return doc.metadata.get("id") or doc.page_content[:50]
+
+
 def query_rag(
     query_text: str,
     model_name: str = None,
     chat_history: str = "",
     api_key: str = "",
     embedding_backend: str = "openai",
+    filename: str | None = None,
 ):
-    embedding_function = get_embedding_function(backend=embedding_backend, api_key=api_key)
-    db = Chroma(
-        persist_directory=get_chroma_path(embedding_backend),
-        embedding_function=embedding_function,
-    )
+    """Hybrid RAG query: Pinecone vector search + local BM25, merged and deduplicated.
 
-    # --- Hybrid search: vector + BM25 (manual merge, no EnsembleRetriever) ---
-    all_docs = db.get(include=["documents", "metadatas"])
-    if not all_docs["documents"]:
-        return {"answer": "No relevant documents found.", "sources": [], "raw_sources": []}
-
-    doc_objects = [
-        LCDocument(page_content=text, metadata=meta)
-        for text, meta in zip(all_docs["documents"], all_docs["metadatas"])
-    ]
+    Pass `filename` to restrict retrieval to a single indexed document.
+    """
+    store = get_vector_store(backend=embedding_backend, api_key=api_key)
 
     # Vector search (semantic)
-    vector_results = db.similarity_search_with_score(query_text, k=8)
+    search_kwargs = {"k": 10}
+    if filename:
+        search_kwargs["filter"] = {"filename": {"$eq": filename}}
+    vector_results = store.similarity_search_with_score(query_text, **search_kwargs)
     vector_docs = [doc for doc, _ in vector_results]
 
-    # BM25 search (keyword)
-    bm25_retriever = BM25Retriever.from_documents(doc_objects)
-    bm25_retriever.k = 8
-    bm25_docs = bm25_retriever.invoke(query_text)
+    # BM25 search (keyword) over the locally cached corpus
+    corpus = load_corpus(embedding_backend)
+    if filename:
+        corpus = [doc for doc in corpus if doc.metadata.get("filename") == filename]
 
-    # Merge and deduplicate — vector first, then BM25 additions
+    bm25_docs = []
+    if corpus:
+        bm25_retriever = BM25Retriever.from_documents(corpus)
+        bm25_retriever.k = 8
+        bm25_docs = bm25_retriever.invoke(query_text)
+
+    # Merge and deduplicate — vector hits first, then BM25 additions
     seen_ids = set()
     unique_docs = []
     for doc in vector_docs + bm25_docs:
-        cid = doc.metadata.get("id", doc.page_content[:50])
+        cid = chunk_key(doc)
         if cid not in seen_ids:
             seen_ids.add(cid)
             unique_docs.append(doc)
 
-    unique_docs = unique_docs[:10]
+    unique_docs = unique_docs[:12]
 
     if not unique_docs:
-        return {"answer": "No relevant documents found.", "sources": [], "raw_sources": []}
+        return {"answer": "No relevant documents found. Index some PDFs first.", "sources": [], "raw_sources": []}
 
     context_text = "\n\n---\n\n".join([doc.page_content for doc in unique_docs])
 
@@ -115,38 +129,37 @@ def query_rag(
     else:
         answer = model.invoke(prompt)
 
-    # Confidence scores from vector search
-    score_map = {
-        doc.metadata.get("id", doc.page_content[:50]): score
-        for doc, score in vector_results
-    }
+    # Confidence scores from vector search similarity
+    score_map = {chunk_key(doc): score for doc, score in vector_results}
 
     sources = []
     seen = set()
     for doc in unique_docs:
-        chunk_id = doc.metadata.get("id", "")
-        if chunk_id in seen:
+        cid = chunk_key(doc)
+        if cid in seen:
             continue
-        seen.add(chunk_id)
+        seen.add(cid)
 
-        score = score_map.get(chunk_id, 1.0)
-        confidence = max(0, round((1 - min(score, 1.5) / 1.5) * 100))
-        filename = doc.metadata.get("filename", doc.metadata.get("source", "unknown"))
+        # BM25-only hits have no vector score; show a neutral mid confidence.
+        confidence = similarity_to_confidence(score_map.get(cid, FULL_CONFIDENCE_SIMILARITY * 0.5))
+        filename_meta = doc.metadata.get("filename", doc.metadata.get("source", "unknown"))
         page = doc.metadata.get("page_number", doc.metadata.get("page", "?"))
+        if isinstance(page, float):
+            page = int(page)  # Pinecone stores all numbers as floats
         excerpt = doc.page_content
 
         sources.append({
-            "filename": filename,
+            "filename": filename_meta,
             "page": page,
             "confidence": confidence,
-            "chunk_id": chunk_id,
+            "chunk_id": cid,
             "excerpt": excerpt[:200] + "..." if len(excerpt) > 200 else excerpt,
         })
 
     return {
         "answer": answer,
         "sources": sources,
-        "raw_sources": [doc.metadata.get("id") for doc in unique_docs],
+        "raw_sources": [chunk_key(doc) for doc in unique_docs],
     }
 
 
@@ -157,6 +170,7 @@ def main():
     parser.add_argument("--chat-history", default="")
     parser.add_argument("--api-key", default="")
     parser.add_argument("--embedding-backend", default="openai")
+    parser.add_argument("--filename", default="", help="Restrict retrieval to one document.")
     args = parser.parse_args()
 
     result = query_rag(
@@ -165,6 +179,7 @@ def main():
         chat_history=args.chat_history,
         api_key=args.api_key,
         embedding_backend=args.embedding_backend,
+        filename=args.filename or None,
     )
     print(json.dumps(result))
 

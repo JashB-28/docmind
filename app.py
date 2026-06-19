@@ -4,8 +4,6 @@ load_dotenv()
 
 import os
 import json
-import subprocess
-import sys
 import tempfile
 import urllib.error
 import urllib.request
@@ -14,12 +12,10 @@ import streamlit as st
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_core.prompts import ChatPromptTemplate
 
-from get_embedding_function import (
-    get_chroma_path,
-    get_embedding_function,
-    get_ollama_base_url,
-)
-from populate_database import clear_database
+from get_embedding_function import get_ollama_base_url
+from populate_database import index_documents
+from query_data import query_rag
+from vector_store import clear_database
 
 
 st.set_page_config(
@@ -136,11 +132,11 @@ def get_ollama_models():
     return models, ""
 
 
-def format_command_failure(exc: subprocess.CalledProcessError) -> str:
-    stderr = (exc.stderr or "").strip()
-    stdout = (exc.stdout or "").strip()
-    details = stderr or stdout or str(exc)
-    return f"Command failed with exit code {exc.returncode}: {details}"
+def clear_uploaded_pdfs():
+    if os.path.isdir("data"):
+        for name in os.listdir("data"):
+            if name.lower().endswith(".pdf"):
+                os.remove(os.path.join("data", name))
 
 
 def confidence_badge(conf: int) -> str:
@@ -168,6 +164,13 @@ def render_sources(sources: list):
 
 
 def ensure_provider_ready() -> bool:
+    if not os.getenv("PINECONE_API_KEY", "").strip():
+        st.error(
+            "PINECONE_API_KEY is not set. Add it to your .env file "
+            "(create a free key at https://app.pinecone.io)."
+        )
+        return False
+
     if provider_requires_api_key() and not get_api_key():
         st.error("No API key provided. Add one in the OpenAI tab before using OpenAI.")
         return False
@@ -197,142 +200,9 @@ def ensure_provider_ready() -> bool:
     return True
 
 
-def run_checked_command(command: list[str]) -> subprocess.CompletedProcess:
-    try:
-        return subprocess.run(
-            command,
-            cwd=os.getcwd(),
-            capture_output=True,
-            text=True,
-            check=True,
-        )
-    except subprocess.CalledProcessError as exc:
-        raise RuntimeError(format_command_failure(exc)) from exc
-
-
-def index_documents_for_provider(provider: str, api_key: str) -> int:
-    command = [sys.executable, "populate_database.py", "--backend", provider]
-    if provider == "openai":
-        command.extend(["--api-key", api_key])
-
-    result = run_checked_command(command)
-
-    output = result.stdout.strip().splitlines()
-    for line in reversed(output):
-        if line.startswith("Done. Total chunks in DB:"):
-            return int(line.rsplit(":", 1)[1].strip())
-
-    raise RuntimeError("Indexing finished, but the total chunk count was not returned.")
-
-
-def run_chat_query(query_text: str, model_name: str, chat_history: str, api_key: str, embedding_backend: str) -> dict:
-    command = [
-        sys.executable,
-        "query_data.py",
-        "--query-text",
-        query_text,
-        "--model-name",
-        model_name,
-        "--chat-history",
-        chat_history,
-        "--api-key",
-        api_key,
-        "--embedding-backend",
-        embedding_backend,
-    ]
-
-    result = run_checked_command(command)
-
-    return json.loads(result.stdout)
-
-
-def query_filtered(query: str, filename: str, model_name: str) -> dict:
-    from langchain_chroma import Chroma
-    from langchain_community.retrievers import BM25Retriever
-    from langchain_core.documents import Document as LCDocument
-
-    provider = get_active_provider()
-    prompt_template = (
-        "Answer based only on this context. If the information is not present, say so.\n\n"
-        "Context:\n{context}\n\nQuestion: {question}\n\nAnswer:"
-    )
-
-    db = Chroma(
-        persist_directory=get_chroma_path(provider),
-        embedding_function=get_embedding_function(backend=provider, api_key=get_api_key()),
-    )
-
-    vector_results = db.similarity_search_with_score(query, k=5, filter={"filename": filename})
-    vector_docs = [doc for doc, _ in vector_results]
-
-    all_docs = db.get(include=["documents", "metadatas"])
-    filtered_doc_objects = [
-        LCDocument(page_content=text, metadata=meta)
-        for text, meta in zip(all_docs["documents"], all_docs["metadatas"])
-        if meta.get("filename") == filename
-    ]
-
-    if not filtered_doc_objects:
-        return {"answer": "No relevant content found in this document.", "sources": []}
-
-    bm25_retriever = BM25Retriever.from_documents(filtered_doc_objects)
-    bm25_retriever.k = 5
-    bm25_docs = bm25_retriever.invoke(query)
-
-    seen_ids = set()
-    unique_docs = []
-    for doc in vector_docs + bm25_docs:
-        chunk_id = doc.metadata.get("id", doc.page_content[:50])
-        if chunk_id not in seen_ids:
-            seen_ids.add(chunk_id)
-            unique_docs.append(doc)
-
-    unique_docs = unique_docs[:8]
-    if not unique_docs:
-        return {"answer": "No relevant content found in this document.", "sources": []}
-
-    context = "\n\n---\n\n".join([doc.page_content for doc in unique_docs])
-    prompt = ChatPromptTemplate.from_template(prompt_template).format(context=context, question=query)
-
-    if is_openai_model(model_name):
-        from langchain_openai import ChatOpenAI
-
-        answer = ChatOpenAI(model=model_name, api_key=get_api_key()).invoke(prompt).content
-    else:
-        from langchain_ollama import OllamaLLM
-
-        answer = OllamaLLM(
-            model=model_name,
-            base_url=get_ollama_base_url(),
-        ).invoke(prompt)
-
-    score_map = {doc.metadata.get("id", doc.page_content[:50]): score for doc, score in vector_results}
-
-    sources = []
-    seen = set()
-    for doc in unique_docs:
-        chunk_id = doc.metadata.get("id", doc.page_content[:50])
-        if chunk_id in seen:
-            continue
-        seen.add(chunk_id)
-        score = score_map.get(chunk_id, 1.0)
-        confidence = max(0, round((1 - min(score, 1.5) / 1.5) * 100))
-        excerpt = doc.page_content
-        sources.append(
-            {
-                "filename": doc.metadata.get("filename", filename),
-                "page": doc.metadata.get("page_number", "?"),
-                "confidence": confidence,
-                "excerpt": excerpt[:200] + "..." if len(excerpt) > 200 else excerpt,
-            }
-        )
-
-    return {"answer": answer, "sources": sources}
-
-
 with st.sidebar:
     st.markdown('<div class="sidebar-logo">🧠 DocMind</div>', unsafe_allow_html=True)
-    st.markdown('<div class="sidebar-sub">RAG · PDF Chat · Citations</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sidebar-sub">RAG · PDF Chat · Citations · version 2.1</div>', unsafe_allow_html=True)
 
     st.markdown('<div class="section-label">Choose Provider</div>', unsafe_allow_html=True)
     st.radio(
@@ -390,7 +260,7 @@ with st.sidebar:
 
             with st.spinner(f"Indexing documents for the {active_provider.title()} tab..."):
                 try:
-                    total = index_documents_for_provider(active_provider, get_api_key())
+                    total = index_documents(backend=active_provider, api_key=get_api_key())
                     st.session_state.docs_loaded[active_provider] = names
                     st.session_state.chat_history = []
                     st.success(
@@ -421,7 +291,8 @@ with st.sidebar:
     st.markdown('<div class="section-label">Database</div>', unsafe_allow_html=True)
     if st.button("🗑 Clear Current Database", use_container_width=True):
         try:
-            clear_database(get_chroma_path(active_provider))
+            clear_database(active_provider)
+            clear_uploaded_pdfs()
             st.session_state.docs_loaded[active_provider] = []
             st.session_state.chat_history = []
             st.success(f"Cleared the {active_provider.title()} database.")
@@ -434,7 +305,7 @@ with st.sidebar:
         st.session_state.chat_history = []
         st.rerun()
 
-    st.caption("LangChain · Chroma · OpenAI · Ollama · Streamlit")
+    st.caption("LangChain · Pinecone · OpenAI · Ollama · Streamlit")
 
 
 st.markdown('<div class="main-header">🧠 DocMind</div>', unsafe_allow_html=True)
@@ -492,7 +363,7 @@ if st.session_state.mode == "chat":
         )
         with st.spinner("Thinking..."):
             try:
-                result = run_chat_query(
+                result = query_rag(
                     user_input,
                     model_name=get_active_model(),
                     chat_history=history_str,
@@ -539,7 +410,13 @@ elif st.session_state.mode == "compare":
                     st.markdown(f'<div class="compare-header">📄 {doc_name}</div>', unsafe_allow_html=True)
                     with st.spinner("Querying..."):
                         try:
-                            result = query_filtered(compare_q, doc_name, get_active_model())
+                            result = query_rag(
+                                compare_q,
+                                model_name=get_active_model(),
+                                api_key=get_api_key(),
+                                embedding_backend=get_active_provider(),
+                                filename=doc_name,
+                            )
                             st.markdown(
                                 f'<div class="msg-assistant">{result["answer"]}</div>',
                                 unsafe_allow_html=True,

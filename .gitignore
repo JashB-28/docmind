@@ -5,9 +5,10 @@ __pycache__/
 *.pyc
 .pytest_cache/
 
-# Data and DB — don't commit these
+# Data and local caches — don't commit these (vectors live in Pinecone)
 data/
 chroma/
+bm25_corpus/
 
 # VS Code
 .vscode/

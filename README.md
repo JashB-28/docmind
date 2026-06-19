@@ -9,7 +9,7 @@ pinned: false
 
 # 🧠 DocMind - AI-Powered RAG Document Assistant
 
-A production-ready document Q&A system built with LangChain, ChromaDB, and OpenAI. Upload PDFs, ask questions, and get answers with page-level citations and confidence scores. Supports both OpenAI cloud models and local Ollama models.
+A production-ready document Q&A system built with LangChain, Pinecone, and OpenAI. Upload PDFs, ask questions, and get answers with page-level citations and confidence scores. Supports both OpenAI cloud models and local Ollama models.
 
 ---
 
@@ -33,7 +33,7 @@ A production-ready document Q&A system built with LangChain, ChromaDB, and OpenA
 ```
 PDFs → PyPDFLoader → RecursiveTextSplitter → OpenAI text-embedding-3-small
                                                         ↓
-                                              Chroma Vector Store
+                                       Pinecone Vector Store (serverless)
                                                         ↓
 User Query → Embed Query → Hybrid Search (Vector + BM25) → Prompt + Context
                                                         ↓
@@ -50,7 +50,7 @@ User Query → Embed Query → Hybrid Search (Vector + BM25) → Prompt + Contex
 |---|---|
 | LLM | OpenAI (GPT-4o, GPT-4o-mini) or Ollama (Mistral, Llama3, Phi3, Gemma2) |
 | Embeddings | OpenAI text-embedding-3-small or nomic-embed-text via Ollama |
-| Vector store | ChromaDB (local) |
+| Vector store | Pinecone (serverless cloud) |
 | Keyword search | BM25 via rank_bm25 |
 | Orchestration | LangChain |
 | UI | Streamlit |
@@ -81,6 +81,13 @@ EMBEDDING_BACKEND=openai
 OPENAI_API_KEY=sk-...
 OPENAI_LLM_MODEL=gpt-4o-mini
 OPENAI_EMBEDDING_MODEL=text-embedding-3-small
+
+# Pinecone — create a free API key at https://app.pinecone.io
+PINECONE_API_KEY=pcsk_...
+# Optional (defaults shown)
+# PINECONE_INDEX_PREFIX=docmind
+# PINECONE_CLOUD=aws
+# PINECONE_REGION=us-east-1
 
 # Only needed if switching to Ollama
 OLLAMA_LLM_MODEL=mistral
@@ -121,7 +128,7 @@ LLM_BACKEND=ollama
 EMBEDDING_BACKEND=ollama
 ```
 
-3. Re-index your documents (embeddings are model-specific):
+3. Re-index your documents (each backend gets its own Pinecone index, since embedding dimensions differ):
 ```bash
 python populate_database.py --reset
 ```
@@ -133,19 +140,19 @@ python populate_database.py --reset
 ### Build and run locally
 ```bash
 docker build -t docmind .
-docker run -p 7860:7860 -e OPENAI_API_KEY=your-key docmind
+docker run -p 7860:7860 -e OPENAI_API_KEY=your-key -e PINECONE_API_KEY=your-pinecone-key docmind
 ```
 
 ### Deploy to Hugging Face Spaces
 1. Create a new Space with **Docker** as the SDK
 2. Push this repo to the Space
-3. Add `OPENAI_API_KEY` in Space Settings → Secrets
+3. Add `OPENAI_API_KEY` and `PINECONE_API_KEY` in Space Settings → Secrets
 
 ---
 
 ## Running Tests
 ```bash
-pytest test_rag.py -v
+pytest tests -v
 ```
 
 Tests use an LLM-as-judge pattern - OpenAI evaluates whether the RAG answer matches the expected response.
@@ -154,7 +161,7 @@ Tests use an LLM-as-judge pattern - OpenAI evaluates whether the RAG answer matc
 
 ## How Confidence Scores Work
 
-ChromaDB returns cosine similarity scores for each retrieved chunk. DocMind converts these to a human-readable confidence percentage:
+Pinecone returns a cosine similarity score for each retrieved chunk (higher = better). DocMind maps it to a human-readable confidence percentage, treating a similarity of 0.75+ as a full match:
 
 - 🟢 **70%+** - High confidence, strong semantic match
 - 🟡 **40–69%** - Medium confidence, partial match
@@ -167,17 +174,20 @@ ChromaDB returns cosine similarity scores for each retrieved chunk. DocMind conv
 ```
 ├── app.py                    # Streamlit UI
 ├── query_data.py             # Hybrid RAG pipeline with memory + citations
-├── populate_database.py      # PDF ingestion + Chroma indexing
+├── populate_database.py      # PDF ingestion + Pinecone indexing
+├── vector_store.py           # Pinecone index management + BM25 corpus cache
 ├── get_embedding_function.py # Embedding model config (OpenAI or Ollama)
-├── test_rag.py               # Automated RAG evaluation tests
 ├── requirements.txt
 ├── Dockerfile
-└── data/                     # Drop your PDFs here
+├── tests/                    # Automated RAG evaluation tests (pytest + LLM-as-judge)
+├── scripts/                  # Deploy helpers (push_all.bat, test_local.bat)
+├── data/                     # Drop your PDFs here
+└── bm25_corpus/              # Local keyword-search cache (auto-generated)
 ```
 
 ---
 
 ## Skills Demonstrated
 
-`RAG` `LangChain` `ChromaDB` `Hybrid Search` `BM25` `Vector Embeddings` `OpenAI API` `Ollama` `Local LLMs` `Streamlit` `Prompt Engineering` `Conversational Memory` `Semantic Search` `Docker` `pytest` `Python`
+`RAG` `LangChain` `Pinecone` `Hybrid Search` `BM25` `Vector Embeddings` `OpenAI API` `Ollama` `Local LLMs` `Streamlit` `Prompt Engineering` `Conversational Memory` `Semantic Search` `Docker` `pytest` `Python`
 

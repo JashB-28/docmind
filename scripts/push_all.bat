@@ -1,4 +1,7 @@
 @echo off
+:: Always run from the repo root, no matter where this script lives
+cd /d "%~dp0.."
+
 echo ================================================
 echo   Step 1/4: Staging and committing changes...
 echo ================================================

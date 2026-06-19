@@ -12,14 +12,17 @@ knowledgebaseenv/
 venv/
 env/
 
-# Data and DB — don't bake into image; mount as volumes
+# Data and local caches — don't bake into image
 data/
 chroma/
+bm25_corpus/
 
 # Dev tools
 .vscode/
 .git/
 *.md
+tests/
+scripts/
 
 # Conda/pip artifacts
 *.egg-info/

@@ -2,11 +2,11 @@ streamlit
 langchain
 langchain-core
 langchain-community
-langchain-chroma
+langchain-pinecone
 langchain-ollama
 langchain-text-splitters
 langchain-openai
-chromadb
+pinecone
 pypdf
 pytest
 python-dotenv

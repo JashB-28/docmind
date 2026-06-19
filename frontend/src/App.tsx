@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import Sidebar from "./components/Sidebar";
+import BotAvatar from "./components/BotAvatar";
 import MessageBubble from "./components/MessageBubble";
+import Sidebar from "./components/Sidebar";
 import {
   clearDocuments,
   getHealth,
@@ -10,6 +11,14 @@ import {
 } from "./lib/api";
 import { getSessionId, resetSessionId } from "./lib/session";
 import type { ChatMessage, Health, Provider } from "./types";
+
+type Theme = "light" | "dark";
+
+function initialTheme(): Theme {
+  const saved = localStorage.getItem("docmind_theme");
+  if (saved === "light" || saved === "dark") return saved;
+  return window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
 
 export default function App() {
   const [sessionId, setSessionId] = useState(getSessionId);
@@ -23,8 +32,14 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [health, setHealth] = useState<Health | null>(null);
+  const [theme, setTheme] = useState<Theme>(initialTheme);
 
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    localStorage.setItem("docmind_theme", theme);
+  }, [theme]);
 
   useEffect(() => {
     getHealth().then(setHealth).catch(() => setHealth(null));
@@ -102,6 +117,7 @@ export default function App() {
   }
 
   const hasDocs = documents.length > 0;
+  const showWelcome = messages.length === 0;
 
   return (
     <div className="layout">
@@ -120,42 +136,68 @@ export default function App() {
       />
 
       <main className="main">
-        <header className="main-head">
-          <h1>🧠 DocMind</h1>
-          <p>Ask anything about your documents — with citations, confidence, and live answers.</p>
-          <span className="provider-badge">
-            {provider === "openai" ? "OpenAI" : "Ollama"} · {model}
-          </span>
+        <header className="topbar">
+          <div className="brand">
+            <BotAvatar size={36} />
+            <div>
+              <div className="brand-name">DocMind</div>
+              <div className="brand-sub">
+                {provider === "openai" ? "OpenAI" : provider === "bedrock" ? "Bedrock" : "Ollama"}
+                {" · "}
+                {model}
+              </div>
+            </div>
+          </div>
+          <button
+            className="theme-toggle"
+            onClick={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
+            title={theme === "dark" ? "Switch to light" : "Switch to dark"}
+          >
+            {theme === "dark" ? "☀" : "☾"}
+          </button>
         </header>
 
         {error && <div className="banner error">{error}</div>}
 
         <div className="chat" ref={scrollRef}>
-          {!hasDocs && messages.length === 0 ? (
-            <div className="empty">
-              <div className="empty-icon">📂</div>
-              <div className="empty-title">No documents indexed yet</div>
-              <div className="empty-sub">
-                Upload PDFs in the sidebar and click <strong>Index Documents</strong> to start.
+          <div className="chat-inner">
+            {showWelcome ? (
+              <div className="welcome">
+                <BotAvatar size={84} />
+                <div className="welcome-title">
+                  {hasDocs ? "Hey there 👋" : "Welcome to DocMind"}
+                </div>
+                <div className="welcome-sub">
+                  {hasDocs
+                    ? "Ask me anything about your documents — I'll answer with citations."
+                    : "Upload a PDF in the sidebar and click Index Documents to begin."}
+                </div>
               </div>
-            </div>
-          ) : (
-            messages.map((m, i) => <MessageBubble key={i} message={m} />)
-          )}
+            ) : (
+              messages.map((m, i) => <MessageBubble key={i} message={m} />)
+            )}
+          </div>
         </div>
 
         <div className="composer">
-          <input
-            className="composer-input"
-            placeholder={hasDocs ? "Ask a question about your documents…" : "Index documents first…"}
-            value={input}
-            disabled={!hasDocs || busy}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && handleSend()}
-          />
-          <button className="btn primary send" disabled={!hasDocs || busy} onClick={handleSend}>
-            {busy ? "…" : "Send →"}
-          </button>
+          <div className="composer-inner">
+            <input
+              className="composer-input"
+              placeholder={hasDocs ? "Ask a question…" : "Index documents first…"}
+              value={input}
+              disabled={!hasDocs || busy}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleSend()}
+            />
+            <button
+              className="send-btn"
+              disabled={!hasDocs || busy}
+              onClick={handleSend}
+              title="Send"
+            >
+              {busy ? "…" : "↑"}
+            </button>
+          </div>
         </div>
       </main>
     </div>

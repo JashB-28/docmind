@@ -1,0 +1,35 @@
+# Production stack for EC2: runs the prebuilt image pulled from ECR, fronted by
+# Caddy which auto-provisions HTTPS (Let's Encrypt) for your domain.
+#
+#   ECR_IMAGE  — full image ref, e.g. <acct>.dkr.ecr.us-east-1.amazonaws.com/docmind:latest
+#   DOMAIN     — your domain, e.g. docmind.duckdns.org
+# Both are read from the .env file on the box.
+services:
+  docmind:
+    image: ${ECR_IMAGE:-docmind:latest}
+    container_name: docmind
+    env_file:
+      - .env
+    expose:
+      - "8000"            # internal only — Caddy is the public entrypoint
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2
+    container_name: caddy
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - DOMAIN=${DOMAIN}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data      # persists issued TLS certificates
+      - caddy_config:/config
+    depends_on:
+      - docmind
+    restart: unless-stopped
+
+volumes:
+  caddy_data:
+  caddy_config:

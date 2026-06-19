@@ -1,0 +1,7 @@
+# Caddy reverse proxy with automatic HTTPS.
+# Caddy reads $DOMAIN from the environment, fetches a free Let's Encrypt cert for
+# it on first boot, renews it automatically, and proxies traffic to the app.
+{$DOMAIN} {
+	encode gzip
+	reverse_proxy docmind:8000
+}

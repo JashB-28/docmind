@@ -147,6 +147,12 @@ Pick a host port that doesn't clash with your other services by editing the
 `ports:` mapping in `docker-compose.yml` (e.g. `"8090:8000"`), then put it behind
 your existing Nginx/reverse proxy. Tighten `CORS_ORIGINS` to your domain in `.env`.
 
+**Continuous deployment.** `docker-compose.prod.yml` + `.github/workflows/deploy.yml`
+provide a push-button (or merge-triggered) pipeline: GitHub Actions builds the
+image, pushes it to **ECR** using **keyless OIDC auth**, and rolls it out on EC2
+via **SSM**, with **Caddy** terminating HTTPS for your domain (e.g. DuckDNS) via
+auto-renewing Let's Encrypt certs. Full setup in [docs/DEPLOY.md](docs/DEPLOY.md).
+
 ---
 
 ## API
@@ -213,5 +219,5 @@ percentage, treating ≥ 0.75 similarity as a full match:
 `RAG` `FastAPI` `React` `TypeScript` `SSE Streaming` `LangChain` `Pinecone`
 `Hybrid Search` `BM25` `RRF` `Cross-encoder Reranking` `Query Rewriting`
 `Vector Embeddings` `OpenAI` `Amazon Bedrock` `Ollama` `Docker` `Multi-tenant namespaces`
-`Observability` `Langfuse` `RAGAS Eval` `GitHub Actions CI` `Structured Logging`
-`pytest` `Python`
+`Observability` `Langfuse` `RAGAS Eval` `GitHub Actions CI/CD` `Structured Logging`
+`AWS` `ECR` `ECS-ready` `OIDC` `SSM` `Caddy / Let's Encrypt` `pytest` `Python`

@@ -3,6 +3,17 @@ import type { Health, Provider } from "../types";
 
 const OPENAI_MODELS = ["gpt-4o-mini", "gpt-4o", "gpt-3.5-turbo"];
 const OLLAMA_MODELS = ["mistral", "llama3", "llama3.2", "phi3", "gemma2"];
+const BEDROCK_MODELS = [
+  "anthropic.claude-3-5-sonnet-20240620-v1:0",
+  "anthropic.claude-3-haiku-20240307-v1:0",
+  "meta.llama3-1-8b-instruct-v1:0",
+];
+
+const MODELS_BY_PROVIDER: Record<Provider, string[]> = {
+  openai: OPENAI_MODELS,
+  ollama: OLLAMA_MODELS,
+  bedrock: BEDROCK_MODELS,
+};
 
 interface Props {
   provider: Provider;
@@ -35,11 +46,11 @@ export default function Sidebar(props: Props) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [staged, setStaged] = useState<File[]>([]);
 
-  const models = provider === "openai" ? OPENAI_MODELS : OLLAMA_MODELS;
+  const models = MODELS_BY_PROVIDER[provider];
 
   function switchProvider(p: Provider) {
     setProvider(p);
-    setModel(p === "openai" ? OPENAI_MODELS[0] : OLLAMA_MODELS[0]);
+    setModel(MODELS_BY_PROVIDER[p][0]);
   }
 
   return (
@@ -56,12 +67,21 @@ export default function Sidebar(props: Props) {
           OpenAI
         </button>
         <button
+          className={provider === "bedrock" ? "seg-btn active" : "seg-btn"}
+          onClick={() => switchProvider("bedrock")}
+        >
+          Bedrock
+        </button>
+        <button
           className={provider === "ollama" ? "seg-btn active" : "seg-btn"}
           onClick={() => switchProvider("ollama")}
         >
           Ollama
         </button>
       </div>
+      {provider === "bedrock" && (
+        <div className="hint">Uses the server's AWS credentials — no key needed.</div>
+      )}
 
       {provider === "openai" && (
         <input

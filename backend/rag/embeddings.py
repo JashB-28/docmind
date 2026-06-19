@@ -18,6 +18,15 @@ def get_embedding_function(backend: str | None = None, api_key: str | None = Non
             base_url=settings.ollama_base_url,
         )
 
+    if selected == "bedrock":
+        from langchain_aws import BedrockEmbeddings
+
+        # Credentials resolved via the standard AWS chain (env / instance role).
+        return BedrockEmbeddings(
+            model_id=settings.bedrock_embedding_model,
+            region_name=settings.aws_region,
+        )
+
     from langchain_openai import OpenAIEmbeddings
 
     key = api_key or settings.openai_api_key

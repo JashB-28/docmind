@@ -72,36 +72,61 @@ Standalone question:"""
 FULL_CONFIDENCE_SIMILARITY = 0.75
 
 
-def get_llm(model_name: str | None = None, api_key: str = ""):
+def _infer_provider(model_name: str | None) -> str:
+    """Best-effort provider from a bare model name (CLI/legacy callers)."""
+    if model_name and model_name.startswith("gpt"):
+        return "openai"
+    if model_name and (model_name.startswith(("anthropic.", "amazon.", "meta.", "us."))):
+        return "bedrock"
     if model_name:
-        if model_name.startswith("gpt"):
-            from langchain_openai import ChatOpenAI
+        return "ollama"
+    return settings.llm_backend.lower()
 
-            return ChatOpenAI(model=model_name, api_key=api_key), "openai"
-        from langchain_ollama import OllamaLLM
 
-        return OllamaLLM(model=model_name, base_url=get_ollama_base_url()), "ollama"
+def get_llm(model_name: str | None = None, api_key: str = "", provider: str | None = None):
+    """Build an LLM for the given provider. Returns (model, provider)."""
+    provider = (provider or _infer_provider(model_name)).lower()
 
-    if settings.llm_backend.lower() == "ollama":
+    if provider == "ollama":
         from langchain_ollama import OllamaLLM
 
         return OllamaLLM(
-            model=settings.ollama_llm_model,
+            model=model_name or settings.ollama_llm_model,
             base_url=get_ollama_base_url(),
         ), "ollama"
+
+    if provider == "bedrock":
+        from langchain_aws import ChatBedrockConverse
+
+        # Credentials resolved via the standard AWS chain (env / instance role).
+        return ChatBedrockConverse(
+            model=model_name or settings.bedrock_llm_model,
+            region_name=settings.aws_region,
+        ), "bedrock"
 
     from langchain_openai import ChatOpenAI
 
     return ChatOpenAI(
-        model=settings.openai_llm_model,
+        model=model_name or settings.openai_llm_model,
         api_key=api_key or settings.openai_api_key,
     ), "openai"
 
 
+def _text_of(item) -> str:
+    """Extract text from a chat message (OpenAI/Bedrock) or a raw string (Ollama)."""
+    content = getattr(item, "content", item)
+    # Bedrock's Converse API can return content as a list of typed blocks.
+    if isinstance(content, list):
+        return "".join(
+            block.get("text", "") if isinstance(block, dict) else str(block)
+            for block in content
+        )
+    return content
+
+
 def _invoke_text(model, backend: str, prompt: str, callbacks=None) -> str:
-    """Invoke a model and return plain text for either backend."""
-    result = model.invoke(prompt, config=_config(callbacks))
-    return result.content if backend == "openai" else result
+    """Invoke a model and return plain text for any provider."""
+    return _text_of(model.invoke(prompt, config=_config(callbacks)))
 
 
 def similarity_to_confidence(score: float) -> int:
@@ -259,7 +284,7 @@ def query_rag(
     callbacks=None,
 ) -> dict:
     """Blocking hybrid RAG query. Returns {answer, sources, contexts, raw_sources}."""
-    model, backend = get_llm(model_name=model_name, api_key=api_key)
+    model, backend = get_llm(model_name=model_name, api_key=api_key, provider=embedding_backend)
     retrieval_query = condense_question(query_text, chat_history, model, backend, callbacks)
 
     docs, vector_score_map, rerank_score_map = _retrieve(
@@ -301,7 +326,7 @@ def stream_rag(
 
     The caller serializes these into Server-Sent Events.
     """
-    model, backend = get_llm(model_name=model_name, api_key=api_key)
+    model, backend = get_llm(model_name=model_name, api_key=api_key, provider=embedding_backend)
     retrieval_query = condense_question(query_text, chat_history, model, backend, callbacks)
 
     docs, vector_score_map, rerank_score_map = _retrieve(
@@ -317,8 +342,8 @@ def stream_rag(
 
     prompt = _build_prompt(docs, query_text, chat_history)
     for chunk in model.stream(prompt, config=_config(callbacks)):
-        # ChatOpenAI yields message chunks; OllamaLLM yields plain strings.
-        text = chunk.content if backend == "openai" else chunk
+        # Chat models (OpenAI/Bedrock) yield message chunks; Ollama yields strings.
+        text = _text_of(chunk)
         if text:
             yield "token", text
 

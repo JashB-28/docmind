@@ -134,6 +134,12 @@ body,
 .staged {
   margin-top: 8px;
 }
+.hint {
+  font-size: 11px;
+  color: #6a6a7a;
+  margin-top: 8px;
+  line-height: 1.5;
+}
 
 .btn {
   width: 100%;

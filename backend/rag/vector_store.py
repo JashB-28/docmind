@@ -32,6 +32,8 @@ KNOWN_DIMENSIONS = {
     "nomic-embed-text": 768,
     "mxbai-embed-large": 1024,
     "all-minilm": 384,
+    "amazon.titan-embed-text-v2:0": 1024,
+    "amazon.titan-embed-text-v1": 1536,
 }
 
 
@@ -60,6 +62,8 @@ def get_index_name(backend: str | None = None) -> str:
 def _embedding_dimension(backend: str, embeddings) -> int:
     if backend == "ollama":
         model = settings.ollama_embedding_model
+    elif backend == "bedrock":
+        model = settings.bedrock_embedding_model
     else:
         model = settings.openai_embedding_model
     dimension = KNOWN_DIMENSIONS.get(model)

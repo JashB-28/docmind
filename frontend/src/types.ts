@@ -13,7 +13,7 @@ export interface ChatMessage {
   streaming?: boolean;
 }
 
-export type Provider = "openai" | "ollama";
+export type Provider = "openai" | "ollama" | "bedrock";
 
 export interface Health {
   status: string;

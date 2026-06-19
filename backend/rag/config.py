@@ -44,6 +44,14 @@ class Settings(BaseSettings):
     ollama_llm_model: str = "mistral"
     ollama_embedding_model: str = "nomic-embed-text"
 
+    # ── Amazon Bedrock ────────────────────────────────────────────────────────
+    # Credentials come from the standard AWS chain (env vars or the EC2 instance
+    # role) — no keys stored here. Enable model access in the Bedrock console and
+    # make sure the IDs below are available in your region.
+    aws_region: str = "us-east-1"
+    bedrock_llm_model: str = "anthropic.claude-3-5-sonnet-20240620-v1:0"
+    bedrock_embedding_model: str = "amazon.titan-embed-text-v2:0"
+
     # ── API / sessions ────────────────────────────────────────────────────────
     # Comma-separated list of allowed CORS origins, or "*" for any.
     cors_origins: str = "*"

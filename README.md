@@ -60,8 +60,8 @@ Query: `rewrite → vector search + BM25 → RRF fuse → (rerank) → stream an
 | Vector store | Pinecone (serverless), one namespace per session |
 | Keyword search | BM25 (`rank_bm25`), in-memory per session |
 | Fusion / rerank | Reciprocal Rank Fusion + optional cross-encoder (Cohere / local) |
-| LLM | OpenAI (GPT-4o / 4o-mini) or Ollama (Mistral, Llama3, …) |
-| Embeddings | `text-embedding-3-small` or `nomic-embed-text` (Ollama) |
+| LLM | OpenAI (GPT-4o / 4o-mini), Amazon Bedrock (Claude 3.5 / Llama 3), or Ollama |
+| Embeddings | OpenAI, Bedrock (Titan), or Ollama (`nomic-embed-text`) |
 | Packaging | Multi-stage Docker (one image serves API + SPA) |
 | Observability | Structured JSON logs + request ids · optional Langfuse LLM tracing |
 | Evaluation | RAGAS (faithfulness, answer relevancy, context precision/recall) |
@@ -212,6 +212,6 @@ percentage, treating ≥ 0.75 similarity as a full match:
 
 `RAG` `FastAPI` `React` `TypeScript` `SSE Streaming` `LangChain` `Pinecone`
 `Hybrid Search` `BM25` `RRF` `Cross-encoder Reranking` `Query Rewriting`
-`Vector Embeddings` `OpenAI` `Ollama` `Docker` `Multi-tenant namespaces`
+`Vector Embeddings` `OpenAI` `Amazon Bedrock` `Ollama` `Docker` `Multi-tenant namespaces`
 `Observability` `Langfuse` `RAGAS Eval` `GitHub Actions CI` `Structured Logging`
 `pytest` `Python`

@@ -20,6 +20,8 @@ def _callbacks():
 def _resolve_model(provider: str, model: str | None) -> str:
     if provider == "ollama":
         return model or settings.ollama_llm_model
+    if provider == "bedrock":
+        return model or settings.bedrock_llm_model
     return model or settings.openai_llm_model
 
 

@@ -6,14 +6,20 @@ into a single ``Settings`` object, so the rest of the codebase never touches
 """
 
 from functools import lru_cache
+from pathlib import Path
 
-from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Resolve the repo root (…/backend/rag/config.py → repo root) so the .env is
+# found no matter what directory the server is launched from. Real environment
+# variables (e.g. those injected by docker-compose) still take precedence.
+_REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=(".env", "_env"),
+        # Only the real .env (templates _env / .env.example hold placeholders).
+        env_file=_REPO_ROOT / ".env",
         env_file_encoding="utf-8",
         extra="ignore",
     )

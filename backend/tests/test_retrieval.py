@@ -1,7 +1,6 @@
 """Unit tests for Phase 3 retrieval logic — no external services or keys."""
 
 from langchain_core.documents import Document
-
 from rag.query import chunk_key, rrf_fuse
 from rag.reranker import get_reranker
 

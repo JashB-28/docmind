@@ -14,6 +14,8 @@ Exposes a blocking ``query_rag`` and a streaming ``stream_rag`` generator.
 
 import argparse
 import json
+import logging
+import time
 from typing import Iterator
 
 from langchain_community.retrievers import BM25Retriever
@@ -24,6 +26,13 @@ from .config import settings
 from .embeddings import get_ollama_base_url
 from .reranker import get_reranker
 from .vector_store import get_vector_store, load_corpus
+
+logger = logging.getLogger("rag.query")
+
+
+def _config(callbacks):
+    """LangChain run config carrying tracing callbacks, or None when unused."""
+    return {"callbacks": callbacks} if callbacks else None
 
 PROMPT_TEMPLATE = """
 You are a helpful assistant answering questions about the user's documents using the context below.
@@ -89,9 +98,9 @@ def get_llm(model_name: str | None = None, api_key: str = ""):
     ), "openai"
 
 
-def _invoke_text(model, backend: str, prompt: str) -> str:
+def _invoke_text(model, backend: str, prompt: str, callbacks=None) -> str:
     """Invoke a model and return plain text for either backend."""
-    result = model.invoke(prompt)
+    result = model.invoke(prompt, config=_config(callbacks))
     return result.content if backend == "openai" else result
 
 
@@ -103,13 +112,13 @@ def chunk_key(doc) -> str:
     return doc.metadata.get("id") or doc.page_content[:50]
 
 
-def condense_question(question: str, history: str, model, backend: str) -> str:
+def condense_question(question: str, history: str, model, backend: str, callbacks=None) -> str:
     """Rewrite a conversational follow-up into a standalone retrieval query."""
     if not (settings.rewrite_queries and history.strip()):
         return question
     try:
         prompt = CONDENSE_TEMPLATE.format(history=history, question=question)
-        rewritten = _invoke_text(model, backend, prompt).strip()
+        rewritten = _invoke_text(model, backend, prompt, callbacks=callbacks).strip()
         return rewritten or question
     except Exception:
         # Never let rewriting failures break a query; fall back to the original.
@@ -145,6 +154,7 @@ def _retrieve(
 
     Returns (docs, vector_score_map, rerank_score_map).
     """
+    started = time.perf_counter()
     store = get_vector_store(backend=embedding_backend, api_key=api_key, namespace=namespace)
 
     # Vector search (semantic)
@@ -180,6 +190,17 @@ def _retrieve(
     else:
         docs = fused
 
+    logger.info(
+        "retrieval",
+        extra={"extra": {
+            "vector_hits": len(vector_docs),
+            "bm25_hits": len(bm25_docs),
+            "fused": len(fused),
+            "reranked": bool(rerank_score_map),
+            "returned": len(docs),
+            "retrieval_ms": round((time.perf_counter() - started) * 1000, 1),
+        }},
+    )
     return docs, vector_score_map, rerank_score_map
 
 
@@ -235,10 +256,11 @@ def query_rag(
     namespace: str | None = None,
     bm25_corpus: list[Document] | None = None,
     filename: str | None = None,
+    callbacks=None,
 ) -> dict:
-    """Blocking hybrid RAG query. Returns {answer, sources, raw_sources}."""
+    """Blocking hybrid RAG query. Returns {answer, sources, contexts, raw_sources}."""
     model, backend = get_llm(model_name=model_name, api_key=api_key)
-    retrieval_query = condense_question(query_text, chat_history, model, backend)
+    retrieval_query = condense_question(query_text, chat_history, model, backend, callbacks)
 
     docs, vector_score_map, rerank_score_map = _retrieve(
         retrieval_query, namespace, embedding_backend, api_key, bm25_corpus, filename
@@ -248,15 +270,18 @@ def query_rag(
         return {
             "answer": "No relevant documents found. Index some PDFs first.",
             "sources": [],
+            "contexts": [],
             "raw_sources": [],
         }
 
     prompt = _build_prompt(docs, query_text, chat_history)
-    answer = _invoke_text(model, backend, prompt)
+    answer = _invoke_text(model, backend, prompt, callbacks=callbacks)
 
     return {
         "answer": answer,
         "sources": _build_sources(docs, vector_score_map, rerank_score_map),
+        # Full chunk texts (not truncated) — used by the RAGAS eval harness.
+        "contexts": [doc.page_content for doc in docs],
         "raw_sources": [chunk_key(doc) for doc in docs],
     }
 
@@ -270,13 +295,14 @@ def stream_rag(
     namespace: str | None = None,
     bm25_corpus: list[Document] | None = None,
     filename: str | None = None,
+    callbacks=None,
 ) -> Iterator[tuple[str, object]]:
     """Yield ('sources', [...]) once, then ('token', str) repeatedly.
 
     The caller serializes these into Server-Sent Events.
     """
     model, backend = get_llm(model_name=model_name, api_key=api_key)
-    retrieval_query = condense_question(query_text, chat_history, model, backend)
+    retrieval_query = condense_question(query_text, chat_history, model, backend, callbacks)
 
     docs, vector_score_map, rerank_score_map = _retrieve(
         retrieval_query, namespace, embedding_backend, api_key, bm25_corpus, filename
@@ -290,7 +316,7 @@ def stream_rag(
     yield "sources", _build_sources(docs, vector_score_map, rerank_score_map)
 
     prompt = _build_prompt(docs, query_text, chat_history)
-    for chunk in model.stream(prompt):
+    for chunk in model.stream(prompt, config=_config(callbacks)):
         # ChatOpenAI yields message chunks; OllamaLLM yields plain strings.
         text = chunk.content if backend == "openai" else chunk
         if text:

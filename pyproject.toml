@@ -1,0 +1,12 @@
+[tool.ruff]
+target-version = "py313"
+line-length = 100
+extend-exclude = [".venv", ".venv-eval", "frontend", "bm25_corpus"]
+
+[tool.ruff.lint]
+# pycodestyle errors, pyflakes, isort, and a few bug-catching rules.
+select = ["E", "F", "W", "I", "B"]
+ignore = [
+    "E501",  # line length — handled by formatting, not enforced hard
+    "B008",  # function call in default arg — required by FastAPI (File/Form/Depends)
+]

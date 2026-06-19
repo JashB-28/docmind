@@ -53,6 +53,13 @@ class Settings(BaseSettings):
     max_upload_mb: int = 25
     max_pages_per_doc: int = 400
 
+    # ── Observability (Phase 4) ───────────────────────────────────────────────
+    log_level: str = "INFO"
+    # Langfuse LLM tracing — optional. Leave keys blank to disable (no-op).
+    langfuse_public_key: str = ""
+    langfuse_secret_key: str = ""
+    langfuse_host: str = "https://cloud.langfuse.com"
+
     # ── Retrieval (Phase 3) ───────────────────────────────────────────────────
     # Candidates pulled from each retriever before fusion.
     vector_top_k: int = 10

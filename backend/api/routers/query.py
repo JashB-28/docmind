@@ -2,13 +2,19 @@ import json
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
-
-from api.schemas import CompareAnswer, CompareRequest, CompareResponse, QueryRequest
-from api.sessions import sessions
 from rag.config import settings
 from rag.query import query_rag, stream_rag
 
+from api.observability import get_langfuse_handler
+from api.schemas import CompareAnswer, CompareRequest, CompareResponse, QueryRequest
+from api.sessions import sessions
+
 router = APIRouter(tags=["query"])
+
+
+def _callbacks():
+    handler = get_langfuse_handler()
+    return [handler] if handler else None
 
 
 def _resolve_model(provider: str, model: str | None) -> str:
@@ -30,6 +36,7 @@ def query(req: QueryRequest) -> StreamingResponse:
     session = sessions.get(req.session_id)
     corpus = session.corpus if session else []
     model_name = _resolve_model(req.provider, req.model)
+    callbacks = _callbacks()
 
     def event_stream():
         try:
@@ -42,6 +49,7 @@ def query(req: QueryRequest) -> StreamingResponse:
                 namespace=req.session_id,
                 bm25_corpus=corpus,
                 filename=req.filename,
+                callbacks=callbacks,
             ):
                 if kind == "sources":
                     yield _sse("sources", payload)
@@ -67,6 +75,7 @@ def compare(req: CompareRequest) -> CompareResponse:
     corpus = session.corpus if session else []
     model_name = _resolve_model(req.provider, req.model)
 
+    callbacks = _callbacks()
     results = []
     for filename in (req.doc_a, req.doc_b):
         result = query_rag(
@@ -77,6 +86,7 @@ def compare(req: CompareRequest) -> CompareResponse:
             namespace=req.session_id,
             bm25_corpus=corpus,
             filename=filename,
+            callbacks=callbacks,
         )
         results.append(
             CompareAnswer(

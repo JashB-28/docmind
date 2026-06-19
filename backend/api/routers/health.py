@@ -1,8 +1,8 @@
 from fastapi import APIRouter
+from rag.config import settings
 
 from api.schemas import HealthResponse
 from api.sessions import sessions
-from rag.config import settings
 
 router = APIRouter(tags=["health"])
 

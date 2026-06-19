@@ -15,7 +15,6 @@ import os
 
 import pytest
 from dotenv import load_dotenv
-
 from rag.query import query_rag
 
 load_dotenv()

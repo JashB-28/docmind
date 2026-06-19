@@ -11,13 +11,16 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from rag.config import settings
 
+from api.observability import RequestContextMiddleware, configure_logging
 from api.routers import documents, health, query
 from api.sessions import sessions
-from rag.config import settings
 
 STATIC_DIR = os.getenv("STATIC_DIR", "static")
 EVICTION_INTERVAL_SECONDS = 300
+
+configure_logging()
 
 
 @asynccontextmanager
@@ -39,6 +42,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="DocMind API", version="1.0.0", lifespan=lifespan)
 
+app.add_middleware(RequestContextMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origin_list(),

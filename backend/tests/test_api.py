@@ -1,9 +1,8 @@
 """API wiring tests that need no external services or API keys."""
 
-from fastapi.testclient import TestClient
-
 from api.main import app
 from api.sessions import SessionManager
+from fastapi.testclient import TestClient
 
 client = TestClient(app)
 

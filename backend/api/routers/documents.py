@@ -2,11 +2,11 @@ import os
 import tempfile
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from rag.config import settings
+from rag.ingest import index_documents
 
 from api.schemas import DocumentsResponse, IngestResponse
 from api.sessions import sessions
-from rag.config import settings
-from rag.ingest import index_documents
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
@@ -50,9 +50,9 @@ async def ingest(
                 namespace=session.session_id,
             )
         except RuntimeError as exc:
-            raise HTTPException(400, str(exc))
-        except Exception as exc:  # noqa: BLE001 — surface indexing errors to the client
-            raise HTTPException(500, f"Indexing failed: {exc}")
+            raise HTTPException(400, str(exc)) from exc
+        except Exception as exc:  # surface indexing errors to the client
+            raise HTTPException(500, f"Indexing failed: {exc}") from exc
 
     # Cache the BM25 corpus in memory for this session and record filenames.
     session.corpus = result.chunks

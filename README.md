@@ -63,6 +63,9 @@ Query: `rewrite → vector search + BM25 → RRF fuse → (rerank) → stream an
 | LLM | OpenAI (GPT-4o / 4o-mini) or Ollama (Mistral, Llama3, …) |
 | Embeddings | `text-embedding-3-small` or `nomic-embed-text` (Ollama) |
 | Packaging | Multi-stage Docker (one image serves API + SPA) |
+| Observability | Structured JSON logs + request ids · optional Langfuse LLM tracing |
+| Evaluation | RAGAS (faithfulness, answer relevancy, context precision/recall) |
+| CI | GitHub Actions — ruff lint, pytest, frontend build, Docker build |
 | Tests | pytest (API wiring + LLM-as-judge RAG eval) |
 
 ---
@@ -82,9 +85,13 @@ backend/
 │   ├── main.py         # FastAPI app, CORS, serves the built SPA
 │   ├── schemas.py      # request/response models
 │   ├── sessions.py     # in-memory, TTL-evicted session store
+│   ├── observability.py# JSON logging, request-id middleware, Langfuse tracing
 │   └── routers/        # health · documents · query (SSE) · compare
-├── tests/              # test_api.py (no secrets) · test_rag.py (LLM judge)
-└── requirements.txt
+├── eval/               # RAGAS harness: golden.json + run_ragas.py
+├── tests/              # test_api.py · test_retrieval.py (no secrets) · test_rag.py
+├── requirements.txt    # base · requirements-rerank.txt · requirements-eval.txt
+└── ...
+.github/workflows/ci.yml  # lint · test · frontend build · docker build
 frontend/               # Vite + React + TS chat UI (streams answers)
 Dockerfile              # builds the SPA, serves it from FastAPI
 docker-compose.yml
@@ -161,9 +168,34 @@ Interactive docs at `/docs` when the server is running.
 
 ```bash
 cd backend
-pytest tests/test_api.py -v          # no secrets needed
-pytest tests/test_rag.py -v          # needs keys + indexed docs (LLM-as-judge)
+pytest tests/test_api.py tests/test_retrieval.py -v   # no secrets needed
+pytest tests/test_rag.py -v                           # needs keys + indexed docs
 ```
+
+---
+
+## Observability, evaluation & CI
+
+**Logging / tracing.** Every request emits a structured JSON log with a
+`request_id`, path, status, and `duration_ms`; retrieval logs hit counts and
+latency. On EC2 these go straight to journald/CloudWatch — no setup. Set the
+`LANGFUSE_*` keys to additionally trace each LLM call (prompt, completion,
+tokens, cost, latency) in the Langfuse UI; leave them blank and it's a no-op.
+
+**RAGAS evaluation.** `backend/eval/run_ragas.py` scores the pipeline on a golden
+Q&A set (`eval/golden.json`) across four metrics — faithfulness, answer
+relevancy, context precision, context recall — and can fail under a threshold so
+CI/you can gate on quality:
+```bash
+# in a separate venv (RAGAS has its own LangChain pins):
+pip install -r backend/requirements.txt -r backend/requirements-eval.txt
+cd backend && python -m rag.ingest            # index docs into the default namespace
+python -m eval.run_ragas --min-faithfulness 0.7
+```
+
+**CI.** `.github/workflows/ci.yml` runs on every push/PR: ruff lint + pytest
+(secret-free tests; RAG tests auto-skip), the frontend type-check/build, and a
+Docker image build.
 
 ---
 
@@ -181,4 +213,5 @@ percentage, treating ≥ 0.75 similarity as a full match:
 `RAG` `FastAPI` `React` `TypeScript` `SSE Streaming` `LangChain` `Pinecone`
 `Hybrid Search` `BM25` `RRF` `Cross-encoder Reranking` `Query Rewriting`
 `Vector Embeddings` `OpenAI` `Ollama` `Docker` `Multi-tenant namespaces`
+`Observability` `Langfuse` `RAGAS Eval` `GitHub Actions CI` `Structured Logging`
 `pytest` `Python`

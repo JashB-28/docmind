@@ -70,7 +70,7 @@ def _build_local_reranker() -> Reranker:
         if not docs:
             return []
         scores = model.predict([(query, d.page_content) for d in docs])
-        ranked = sorted(zip(docs, scores), key=lambda pair: pair[1], reverse=True)
+        ranked = sorted(zip(docs, scores, strict=False), key=lambda pair: pair[1], reverse=True)
         # Cross-encoder logits are unbounded; squash to 0..1 for confidence.
         top = ranked[: settings.rerank_top_n]
         return [(doc, _sigmoid(float(score))) for doc, score in top]

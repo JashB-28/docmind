@@ -15,7 +15,6 @@ import uuid
 from dataclasses import dataclass, field
 
 from langchain_core.documents import Document
-
 from rag.config import settings
 from rag.vector_store import clear_namespace
 

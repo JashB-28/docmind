@@ -1,0 +1,6 @@
+# Optional RAGAS evaluation dependencies. Install into a SEPARATE venv — RAGAS
+# pulls its own LangChain pins that can differ from the app's:
+#   python -m venv .venv-eval
+#   .venv-eval\Scripts\pip install -r backend/requirements.txt -r backend/requirements-eval.txt
+ragas>=0.2,<0.3
+datasets>=2.19

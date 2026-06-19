@@ -1,0 +1,14 @@
+[
+  {
+    "question": "What is the main topic of the document?",
+    "ground_truth": "REPLACE ME — a concise correct answer for your indexed document."
+  },
+  {
+    "question": "What are the key findings or conclusions?",
+    "ground_truth": "REPLACE ME — the expected answer grounded in your document."
+  },
+  {
+    "question": "Who is the intended audience or what problem does it address?",
+    "ground_truth": "REPLACE ME — expected answer for your document."
+  }
+]

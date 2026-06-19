@@ -27,7 +27,19 @@ Supports both OpenAI cloud models and local Ollama models.
 ```
 
 Ingestion: `PDF → chunk → embed → upsert into the session's Pinecone namespace`.
-Query: `embed question → vector search + BM25 → merge/dedupe → stream answer + cite`.
+Query: `rewrite → vector search + BM25 → RRF fuse → (rerank) → stream answer + cite`.
+
+### Retrieval pipeline
+
+1. **History-aware rewrite** — conversational follow-ups ("and its revenue?") are
+   condensed into a standalone query so retrieval isn't blind to prior turns.
+2. **Hybrid retrieval** — Pinecone vector search (semantic) + in-memory BM25 (keyword).
+3. **Reciprocal Rank Fusion (RRF)** — merges the two rankings by *rank position*,
+   avoiding the trap of comparing cosine similarities against BM25 scores directly.
+4. **Cross-encoder rerank** *(optional)* — reorders fused candidates by true
+   query-document relevance. Pluggable via `RERANKER`: `none` (default), `cohere`
+   (hosted), or `local` (private cross-encoder on the box). Enable with
+   `backend/requirements-rerank.txt`.
 
 ### Privacy model
 
@@ -47,6 +59,7 @@ Query: `embed question → vector search + BM25 → merge/dedupe → stream answ
 | Orchestration | LangChain |
 | Vector store | Pinecone (serverless), one namespace per session |
 | Keyword search | BM25 (`rank_bm25`), in-memory per session |
+| Fusion / rerank | Reciprocal Rank Fusion + optional cross-encoder (Cohere / local) |
 | LLM | OpenAI (GPT-4o / 4o-mini) or Ollama (Mistral, Llama3, …) |
 | Embeddings | `text-embedding-3-small` or `nomic-embed-text` (Ollama) |
 | Packaging | Multi-stage Docker (one image serves API + SPA) |
@@ -63,7 +76,8 @@ backend/
 │   ├── embeddings.py   # OpenAI / Ollama embeddings
 │   ├── vector_store.py # Pinecone + per-session namespaces
 │   ├── ingest.py       # load → chunk → upsert
-│   └── query.py        # hybrid retrieval + blocking & streaming query
+│   ├── query.py        # rewrite → hybrid retrieve → RRF → rerank → (stream) answer
+│   └── reranker.py     # pluggable cross-encoder rerank (none/cohere/local)
 ├── api/
 │   ├── main.py         # FastAPI app, CORS, serves the built SPA
 │   ├── schemas.py      # request/response models
@@ -165,5 +179,6 @@ percentage, treating ≥ 0.75 similarity as a full match:
 ## Skills demonstrated
 
 `RAG` `FastAPI` `React` `TypeScript` `SSE Streaming` `LangChain` `Pinecone`
-`Hybrid Search` `BM25` `Vector Embeddings` `OpenAI` `Ollama` `Docker`
-`Multi-tenant namespaces` `pytest` `Python`
+`Hybrid Search` `BM25` `RRF` `Cross-encoder Reranking` `Query Rewriting`
+`Vector Embeddings` `OpenAI` `Ollama` `Docker` `Multi-tenant namespaces`
+`pytest` `Python`

@@ -53,6 +53,24 @@ class Settings(BaseSettings):
     max_upload_mb: int = 25
     max_pages_per_doc: int = 400
 
+    # ── Retrieval (Phase 3) ───────────────────────────────────────────────────
+    # Candidates pulled from each retriever before fusion.
+    vector_top_k: int = 10
+    bm25_top_k: int = 10
+    # RRF dampening constant (standard default is 60).
+    rrf_k: int = 60
+    # How many fused candidates to keep (the reranker, if any, sees these).
+    fused_top_n: int = 12
+    # Rewrite conversational follow-ups into standalone queries before retrieval.
+    rewrite_queries: bool = True
+    # Reranker backend: "none" | "cohere" | "local". The latter two need the
+    # optional deps in backend/requirements-rerank.txt.
+    reranker: str = "none"
+    rerank_top_n: int = 5
+    cohere_api_key: str = ""
+    cohere_rerank_model: str = "rerank-english-v3.0"
+    local_reranker_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+
     def cors_origin_list(self) -> list[str]:
         if self.cors_origins.strip() == "*":
             return ["*"]

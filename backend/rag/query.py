@@ -1,8 +1,15 @@
-"""Hybrid RAG query pipeline: Pinecone vector search + in-memory BM25.
+"""Hybrid RAG query pipeline with Phase 3 retrieval upgrades.
 
-Exposes both a blocking ``query_rag`` (used by compare/summarize/tests) and a
-streaming ``stream_rag`` generator that yields the sources first and then the
-answer token-by-token, which the API turns into Server-Sent Events.
+Pipeline per query:
+  1. history-aware rewrite — condense conversational follow-ups into a
+     standalone query so retrieval isn't blind to prior turns;
+  2. hybrid retrieval — Pinecone vector search + in-memory BM25;
+  3. Reciprocal Rank Fusion (RRF) — merge the two rankings by rank, not by
+     incomparable raw scores;
+  4. optional cross-encoder rerank — reorder fused candidates by true
+     query-document relevance (see reranker.py).
+
+Exposes a blocking ``query_rag`` and a streaming ``stream_rag`` generator.
 """
 
 import argparse
@@ -15,6 +22,7 @@ from langchain_core.prompts import ChatPromptTemplate
 
 from .config import settings
 from .embeddings import get_ollama_base_url
+from .reranker import get_reranker
 from .vector_store import get_vector_store, load_corpus
 
 PROMPT_TEMPLATE = """
@@ -38,6 +46,17 @@ Context from documents:
 Question: {question}
 
 Answer:"""
+
+CONDENSE_TEMPLATE = """Given the conversation so far and a follow-up question, rewrite the \
+follow-up into a standalone question that includes any context needed to retrieve relevant \
+documents. Keep it concise and preserve the user's intent. If the question is already \
+standalone, return it unchanged. Return only the rewritten question.
+
+Conversation:
+{history}
+
+Follow-up question: {question}
+Standalone question:"""
 
 # Pinecone returns cosine similarity (higher = better). Scores at or above this
 # value are treated as a 100% retrieval match for the confidence display.
@@ -70,6 +89,12 @@ def get_llm(model_name: str | None = None, api_key: str = ""):
     ), "openai"
 
 
+def _invoke_text(model, backend: str, prompt: str) -> str:
+    """Invoke a model and return plain text for either backend."""
+    result = model.invoke(prompt)
+    return result.content if backend == "openai" else result
+
+
 def similarity_to_confidence(score: float) -> int:
     return round(max(0.0, min(score / FULL_CONFIDENCE_SIMILARITY, 1.0)) * 100)
 
@@ -78,23 +103,57 @@ def chunk_key(doc) -> str:
     return doc.metadata.get("id") or doc.page_content[:50]
 
 
+def condense_question(question: str, history: str, model, backend: str) -> str:
+    """Rewrite a conversational follow-up into a standalone retrieval query."""
+    if not (settings.rewrite_queries and history.strip()):
+        return question
+    try:
+        prompt = CONDENSE_TEMPLATE.format(history=history, question=question)
+        rewritten = _invoke_text(model, backend, prompt).strip()
+        return rewritten or question
+    except Exception:
+        # Never let rewriting failures break a query; fall back to the original.
+        return question
+
+
+def rrf_fuse(rankings: list[list[Document]], k: int) -> list[Document]:
+    """Reciprocal Rank Fusion: combine ranked lists by rank position.
+
+    score(d) = sum over lists of 1 / (k + rank_in_list). This avoids comparing
+    cosine similarities against BM25 scores, which live on different scales.
+    """
+    scores: dict[str, float] = {}
+    docs: dict[str, Document] = {}
+    for ranking in rankings:
+        for rank, doc in enumerate(ranking):
+            cid = chunk_key(doc)
+            scores[cid] = scores.get(cid, 0.0) + 1.0 / (k + rank + 1)
+            docs.setdefault(cid, doc)
+    ordered = sorted(scores, key=lambda cid: scores[cid], reverse=True)
+    return [docs[cid] for cid in ordered]
+
+
 def _retrieve(
-    query_text: str,
+    retrieval_query: str,
     namespace: str | None,
     embedding_backend: str,
     api_key: str,
     bm25_corpus: list[Document] | None,
     filename: str | None,
 ):
-    """Run hybrid retrieval and return (unique_docs, vector_results)."""
+    """Hybrid retrieval → RRF fusion → optional rerank.
+
+    Returns (docs, vector_score_map, rerank_score_map).
+    """
     store = get_vector_store(backend=embedding_backend, api_key=api_key, namespace=namespace)
 
     # Vector search (semantic)
-    search_kwargs = {"k": 10}
+    search_kwargs = {"k": settings.vector_top_k}
     if filename:
         search_kwargs["filter"] = {"filename": {"$eq": filename}}
-    vector_results = store.similarity_search_with_score(query_text, **search_kwargs)
+    vector_results = store.similarity_search_with_score(retrieval_query, **search_kwargs)
     vector_docs = [doc for doc, _ in vector_results]
+    vector_score_map = {chunk_key(doc): score for doc, score in vector_results}
 
     # BM25 search (keyword) over the in-memory corpus. Falls back to the on-disk
     # corpus for standalone CLI use when no corpus is passed in.
@@ -102,38 +161,46 @@ def _retrieve(
     if filename:
         corpus = [doc for doc in corpus if doc.metadata.get("filename") == filename]
 
-    bm25_docs = []
+    bm25_docs: list[Document] = []
     if corpus:
         bm25_retriever = BM25Retriever.from_documents(corpus)
-        bm25_retriever.k = 8
-        bm25_docs = bm25_retriever.invoke(query_text)
+        bm25_retriever.k = settings.bm25_top_k
+        bm25_docs = bm25_retriever.invoke(retrieval_query)
 
-    # Merge and deduplicate — vector hits first, then BM25 additions
-    seen_ids = set()
-    unique_docs = []
-    for doc in vector_docs + bm25_docs:
-        cid = chunk_key(doc)
-        if cid not in seen_ids:
-            seen_ids.add(cid)
-            unique_docs.append(doc)
+    # Fuse the two rankings with RRF, then trim to the candidate pool.
+    fused = rrf_fuse([vector_docs, bm25_docs], k=settings.rrf_k)[: settings.fused_top_n]
 
-    return unique_docs[:12], vector_results
+    # Optional cross-encoder rerank for final ordering.
+    rerank_score_map: dict[str, float] = {}
+    reranker = get_reranker()
+    if reranker and fused:
+        reranked = reranker(retrieval_query, fused)
+        docs = [doc for doc, _ in reranked]
+        rerank_score_map = {chunk_key(doc): score for doc, score in reranked}
+    else:
+        docs = fused
+
+    return docs, vector_score_map, rerank_score_map
 
 
-def _build_sources(unique_docs, vector_results) -> list[dict]:
-    score_map = {chunk_key(doc): score for doc, score in vector_results}
+def _build_sources(docs, vector_score_map, rerank_score_map) -> list[dict]:
     sources = []
     seen = set()
-    for doc in unique_docs:
+    for doc in docs:
         cid = chunk_key(doc)
         if cid in seen:
             continue
         seen.add(cid)
 
-        # BM25-only hits have no vector score; show a neutral mid confidence.
-        confidence = similarity_to_confidence(
-            score_map.get(cid, FULL_CONFIDENCE_SIMILARITY * 0.5)
-        )
+        # Prefer the reranker's relevance (0..1) when present; else fall back to
+        # the vector similarity; BM25-only hits with neither get a neutral mid.
+        if cid in rerank_score_map:
+            confidence = round(rerank_score_map[cid] * 100)
+        elif cid in vector_score_map:
+            confidence = similarity_to_confidence(vector_score_map[cid])
+        else:
+            confidence = similarity_to_confidence(FULL_CONFIDENCE_SIMILARITY * 0.5)
+
         filename_meta = doc.metadata.get("filename", doc.metadata.get("source", "unknown"))
         page = doc.metadata.get("page_number", doc.metadata.get("page", "?"))
         if isinstance(page, float):
@@ -150,8 +217,8 @@ def _build_sources(unique_docs, vector_results) -> list[dict]:
     return sources
 
 
-def _build_prompt(unique_docs, query_text: str, chat_history: str) -> str:
-    context_text = "\n\n---\n\n".join([doc.page_content for doc in unique_docs])
+def _build_prompt(docs, query_text: str, chat_history: str) -> str:
+    context_text = "\n\n---\n\n".join([doc.page_content for doc in docs])
     return ChatPromptTemplate.from_template(PROMPT_TEMPLATE).format(
         history=chat_history or "No prior conversation.",
         context=context_text,
@@ -170,25 +237,27 @@ def query_rag(
     filename: str | None = None,
 ) -> dict:
     """Blocking hybrid RAG query. Returns {answer, sources, raw_sources}."""
-    unique_docs, vector_results = _retrieve(
-        query_text, namespace, embedding_backend, api_key, bm25_corpus, filename
+    model, backend = get_llm(model_name=model_name, api_key=api_key)
+    retrieval_query = condense_question(query_text, chat_history, model, backend)
+
+    docs, vector_score_map, rerank_score_map = _retrieve(
+        retrieval_query, namespace, embedding_backend, api_key, bm25_corpus, filename
     )
 
-    if not unique_docs:
+    if not docs:
         return {
             "answer": "No relevant documents found. Index some PDFs first.",
             "sources": [],
             "raw_sources": [],
         }
 
-    prompt = _build_prompt(unique_docs, query_text, chat_history)
-    model, backend = get_llm(model_name=model_name, api_key=api_key)
-    answer = model.invoke(prompt).content if backend == "openai" else model.invoke(prompt)
+    prompt = _build_prompt(docs, query_text, chat_history)
+    answer = _invoke_text(model, backend, prompt)
 
     return {
         "answer": answer,
-        "sources": _build_sources(unique_docs, vector_results),
-        "raw_sources": [chunk_key(doc) for doc in unique_docs],
+        "sources": _build_sources(docs, vector_score_map, rerank_score_map),
+        "raw_sources": [chunk_key(doc) for doc in docs],
     }
 
 
@@ -206,20 +275,21 @@ def stream_rag(
 
     The caller serializes these into Server-Sent Events.
     """
-    unique_docs, vector_results = _retrieve(
-        query_text, namespace, embedding_backend, api_key, bm25_corpus, filename
+    model, backend = get_llm(model_name=model_name, api_key=api_key)
+    retrieval_query = condense_question(query_text, chat_history, model, backend)
+
+    docs, vector_score_map, rerank_score_map = _retrieve(
+        retrieval_query, namespace, embedding_backend, api_key, bm25_corpus, filename
     )
 
-    if not unique_docs:
+    if not docs:
         yield "sources", []
         yield "token", "No relevant documents found. Index some PDFs first."
         return
 
-    yield "sources", _build_sources(unique_docs, vector_results)
+    yield "sources", _build_sources(docs, vector_score_map, rerank_score_map)
 
-    prompt = _build_prompt(unique_docs, query_text, chat_history)
-    model, backend = get_llm(model_name=model_name, api_key=api_key)
-
+    prompt = _build_prompt(docs, query_text, chat_history)
     for chunk in model.stream(prompt):
         # ChatOpenAI yields message chunks; OllamaLLM yields plain strings.
         text = chunk.content if backend == "openai" else chunk

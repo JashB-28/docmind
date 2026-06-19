@@ -1,0 +1,8 @@
+# Optional reranking dependencies — install only if you set RERANKER=cohere|local.
+# Kept out of the base image to avoid pulling torch unless reranking is enabled.
+
+# RERANKER=cohere (lightweight, hosted — note: sends chunk text to Cohere)
+cohere>=5.13
+
+# RERANKER=local (private, runs a cross-encoder on the box — pulls torch)
+sentence-transformers>=3.3

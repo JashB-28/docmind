@@ -5,6 +5,16 @@ __pycache__/
 *.pyc
 .pytest_cache/
 
+# Python venv
+.venv/
+venv/
+env/
+
+# Node / frontend build
+node_modules/
+frontend/dist/
+backend/static/
+
 # Data and local caches — don't commit these (vectors live in Pinecone)
 data/
 chroma/

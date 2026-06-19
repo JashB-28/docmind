@@ -1,30 +1,22 @@
 # Python
 __pycache__/
 *.pyc
-*.pyo
-*.pyd
 .pytest_cache/
-
-# Environment
-.env
-docmind/
-knowledgebaseenv/
+.venv/
 venv/
 env/
 
-# Data and local caches — don't bake into image
+# Node / frontend (rebuilt inside the image)
+frontend/node_modules/
+frontend/dist/
+
+# Local data & caches — never bake into the image
 data/
-chroma/
 bm25_corpus/
+backend/static/
 
-# Dev tools
-.vscode/
+# Secrets & dev tooling
+.env
 .git/
-*.md
-tests/
-scripts/
-
-# Conda/pip artifacts
+.vscode/
 *.egg-info/
-dist/
-build/

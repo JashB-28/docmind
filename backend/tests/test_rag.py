@@ -1,17 +1,22 @@
-﻿"""
+"""
 RAG evaluation tests.
 
 Uses OpenAI as the evaluator judge by default (set OPENAI_API_KEY in .env).
 To switch to Ollama as judge, set EVAL_MODEL=ollama in .env.
 
+These hit Pinecone + an LLM against the default namespace, so index some PDFs
+first with:  python -m rag.ingest
+
 To run:
-    pytest tests -v
+    pytest backend/tests -v
 """
 
 import os
+
 import pytest
 from dotenv import load_dotenv
-from query_data import query_rag
+
+from rag.query import query_rag
 
 load_dotenv()
 
@@ -39,8 +44,10 @@ def get_evaluator():
     eval_backend = os.getenv("EVAL_MODEL", "openai").lower()
     if eval_backend == "ollama":
         from langchain_ollama import OllamaLLM
+
         return OllamaLLM(model=os.getenv("OLLAMA_LLM_MODEL", "mistral")), "ollama"
     from langchain_openai import ChatOpenAI
+
     return ChatOpenAI(
         model=os.getenv("OPENAI_LLM_MODEL", "gpt-4o-mini"),
         api_key=os.getenv("OPENAI_API_KEY"),
@@ -68,16 +75,13 @@ def evaluate(question: str, expected_response: str) -> bool:
     print(f"Scores:   {[s['confidence'] for s in result['sources']]}")
 
     if "true" in verdict:
-        print("\033[92mâœ… PASS\033[0m")
         return True
-    elif "false" in verdict:
-        print("\033[91mâŒ FAIL\033[0m")
+    if "false" in verdict:
         return False
-    else:
-        raise ValueError(f"Evaluator returned unexpected verdict: {verdict!r}")
+    raise ValueError(f"Evaluator returned unexpected verdict: {verdict!r}")
 
 
-# â”€â”€ Smoke tests â€” work with any document corpus â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Smoke tests — work with any document corpus ───────────────────────────────
 class TestGenericRetrieval:
 
     def test_retrieval_returns_answer(self):
@@ -97,40 +101,6 @@ class TestGenericRetrieval:
     def test_unknown_query_handled_gracefully(self):
         result = query_rag("What is the population of Mars in 2099?")
         assert result["answer"]
-
-
-# â”€â”€ Domain-specific tests â€” fill in Q&A pairs for your documents â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-class TestResearchPapers:
-    """
-    def test_abstract_summary(self):
-        assert evaluate(
-            question="What problem does this paper solve?",
-            expected_response="<short answer matching your paper>",
-        )
-    """
-    pass
-
-
-class TestLegalDocuments:
-    """
-    def test_parties_identified(self):
-        assert evaluate(
-            question="Who are the parties to this agreement?",
-            expected_response="<party names>",
-        )
-    """
-    pass
-
-
-class TestFinancialReports:
-    """
-    def test_revenue_figure(self):
-        assert evaluate(
-            question="What was the total revenue reported?",
-            expected_response="<revenue figure>",
-        )
-    """
-    pass
 
 
 if __name__ == "__main__":

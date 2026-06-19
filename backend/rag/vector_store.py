@@ -1,22 +1,25 @@
 """Pinecone vector store helpers.
 
 One serverless index per embedding backend (e.g. docmind-openai, docmind-ollama)
-because each embedding model has its own vector dimension. A local JSON corpus
-cache per backend keeps BM25 keyword search fast without scanning Pinecone.
+because each embedding model has its own vector dimension. Within an index,
+each user session gets its own **namespace**, so one session can never retrieve
+another session's documents — the basis of the app's privacy model.
+
+The BM25 keyword corpus is kept in memory by the API layer (see
+``backend/api/sessions.py``); the optional on-disk helpers here exist only for
+standalone CLI use against the default namespace.
 """
 
 import json
 import os
 import time
 
-from dotenv import load_dotenv
 from langchain_core.documents import Document
 from langchain_pinecone import PineconeVectorStore
 from pinecone import Pinecone, ServerlessSpec
 
-from get_embedding_function import get_embedding_function
-
-load_dotenv()
+from .config import settings
+from .embeddings import get_embedding_function
 
 CORPUS_DIR = "bm25_corpus"
 
@@ -33,7 +36,7 @@ KNOWN_DIMENSIONS = {
 
 
 def get_pinecone_api_key() -> str:
-    key = os.getenv("PINECONE_API_KEY", "").strip()
+    key = settings.pinecone_api_key.strip()
     if not key:
         raise RuntimeError(
             "PINECONE_API_KEY is not set. Add it to your .env file "
@@ -47,19 +50,18 @@ def get_pinecone_client() -> Pinecone:
 
 
 def get_backend(backend: str | None = None) -> str:
-    return (backend or os.getenv("EMBEDDING_BACKEND", "openai")).lower()
+    return (backend or settings.embedding_backend).lower()
 
 
 def get_index_name(backend: str | None = None) -> str:
-    prefix = os.getenv("PINECONE_INDEX_PREFIX", "docmind")
-    return f"{prefix}-{get_backend(backend)}"
+    return f"{settings.pinecone_index_prefix}-{get_backend(backend)}"
 
 
 def _embedding_dimension(backend: str, embeddings) -> int:
     if backend == "ollama":
-        model = os.getenv("OLLAMA_EMBEDDING_MODEL", "nomic-embed-text")
+        model = settings.ollama_embedding_model
     else:
-        model = os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
+        model = settings.openai_embedding_model
     dimension = KNOWN_DIMENSIONS.get(model)
     if dimension is None:
         dimension = len(embeddings.embed_query("dimension probe"))
@@ -75,26 +77,31 @@ def _ensure_index(pc: Pinecone, index_name: str, backend: str, embeddings) -> No
         name=index_name,
         dimension=_embedding_dimension(backend, embeddings),
         metric="cosine",
-        spec=ServerlessSpec(
-            cloud=os.getenv("PINECONE_CLOUD", "aws"),
-            region=os.getenv("PINECONE_REGION", "us-east-1"),
-        ),
+        spec=ServerlessSpec(cloud=settings.pinecone_cloud, region=settings.pinecone_region),
     )
     while not pc.describe_index(index_name).status["ready"]:
         time.sleep(1)
 
 
-def get_vector_store(backend: str | None = None, api_key: str = "") -> PineconeVectorStore:
+def get_vector_store(
+    backend: str | None = None,
+    api_key: str = "",
+    namespace: str | None = None,
+) -> PineconeVectorStore:
     selected = get_backend(backend)
     embeddings = get_embedding_function(backend=selected, api_key=api_key or None)
     pc = get_pinecone_client()
     index_name = get_index_name(selected)
     _ensure_index(pc, index_name, selected, embeddings)
-    return PineconeVectorStore(index=pc.Index(index_name), embedding=embeddings)
+    return PineconeVectorStore(
+        index=pc.Index(index_name),
+        embedding=embeddings,
+        namespace=namespace or "",
+    )
 
 
-def get_existing_ids(backend: str | None = None) -> set[str]:
-    """Return all vector ids currently stored in the backend's index."""
+def get_existing_ids(backend: str | None = None, namespace: str | None = None) -> set[str]:
+    """Return all vector ids stored in the backend's index for a namespace."""
     pc = get_pinecone_client()
     index_name = get_index_name(backend)
     if index_name not in {idx["name"] for idx in pc.list_indexes()}:
@@ -106,15 +113,29 @@ def get_existing_ids(backend: str | None = None) -> set[str]:
     # index), fall back to re-upserting everything — upserts by id are
     # idempotent, so duplicates are impossible either way.
     try:
-        for batch in index.list():
+        for batch in index.list(namespace=namespace or ""):
             ids.update(batch)
     except Exception:
         return set()
     return ids
 
 
+def clear_namespace(backend: str | None = None, namespace: str | None = None) -> None:
+    """Delete every vector belonging to a single session's namespace."""
+    pc = get_pinecone_client()
+    index_name = get_index_name(backend)
+    if index_name not in {idx["name"] for idx in pc.list_indexes()}:
+        return
+    index = pc.Index(index_name)
+    try:
+        index.delete(delete_all=True, namespace=namespace or "")
+    except Exception:
+        # A namespace with no vectors raises; nothing to clear in that case.
+        pass
+
+
 def clear_database(backend: str | None = None) -> None:
-    """Delete the backend's Pinecone index and its local BM25 corpus cache."""
+    """Delete the backend's entire Pinecone index and its local corpus cache."""
     pc = get_pinecone_client()
     index_name = get_index_name(backend)
     if index_name in {idx["name"] for idx in pc.list_indexes()}:
@@ -126,14 +147,13 @@ def clear_database(backend: str | None = None) -> None:
     print("Database cleared")
 
 
-# ── BM25 corpus cache ─────────────────────────────────────────────────────────
+# ── On-disk BM25 corpus cache (CLI / default namespace only) ──────────────────
 
 def corpus_path(backend: str | None = None) -> str:
     return os.path.join(CORPUS_DIR, f"{get_backend(backend)}.json")
 
 
 def save_corpus(chunks: list[Document], backend: str | None = None) -> None:
-    """Persist the full chunk corpus locally so BM25 search never hits Pinecone."""
     os.makedirs(CORPUS_DIR, exist_ok=True)
     payload = [
         {"page_content": chunk.page_content, "metadata": chunk.metadata}

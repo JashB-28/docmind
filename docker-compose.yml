@@ -1,0 +1,17 @@
+# Single-service deployment: FastAPI backend serving the built React SPA.
+# Drops cleanly onto an EC2 box beside other apps — just change the host port.
+services:
+  docmind:
+    build: .
+    image: docmind:latest
+    container_name: docmind
+    ports:
+      - "8000:8000"          # host:container — change the host side to avoid clashes
+    env_file:
+      - .env
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/health').status==200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3

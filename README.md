@@ -1,193 +1,169 @@
----
-title: Docmind
-emoji: 🐨
-colorFrom: indigo
-colorTo: red
-sdk: docker
-pinned: false
----
+# 🧠 DocMind — Fullstack RAG Document Assistant
 
-# 🧠 DocMind - AI-Powered RAG Document Assistant
+A privacy-first, fullstack RAG application. Upload PDFs, ask questions, and get
+**streamed** answers with **page-level citations** and **confidence scores**.
+A **FastAPI** backend runs a hybrid (vector + BM25) retrieval pipeline over
+**Pinecone**; a **React** frontend streams answers token-by-token over SSE.
 
-A production-ready document Q&A system built with LangChain, Pinecone, and OpenAI. Upload PDFs, ask questions, and get answers with page-level citations and confidence scores. Supports both OpenAI cloud models and local Ollama models.
-
----
-
-## Features
-
-- **Multi-PDF support** - Upload and index multiple PDFs at once
-- **Hybrid search** - Combines semantic vector search + BM25 keyword search for better retrieval
-- **Conversational memory** - Remembers context across follow-up questions
-- **Confidence scores** - Every answer includes a retrieval confidence % per source
-- **Page-level citations** - Know exactly which page of which document the answer came from
-- **Document comparison** - Ask the same question across two documents side by side
-- **Summarization** - Generate structured summaries in multiple styles
-- **Flexible model selection** - Use OpenAI (GPT-4o, GPT-4o-mini) or local Ollama models (Mistral, Llama3, etc.)
-- **Dockerized** - Ready to deploy on Hugging Face Spaces or any cloud platform
-- **Automated tests** - RAG pipeline validated with pytest + LLM-as-judge pattern
+Supports both OpenAI cloud models and local Ollama models.
 
 ---
 
 ## Architecture
 
 ```
-PDFs → PyPDFLoader → RecursiveTextSplitter → OpenAI text-embedding-3-small
-                                                        ↓
-                                       Pinecone Vector Store (serverless)
-                                                        ↓
-User Query → Embed Query → Hybrid Search (Vector + BM25) → Prompt + Context
-                                                        ↓
-                                        OpenAI GPT-4o-mini / Ollama LLM
-                                                        ↓
-                                    Answer + Citations + Confidence Score
+                         ┌──────────────────────────┐
+   React + Vite SPA  ─── │  FastAPI backend (/api)   │
+   (streams tokens)      │                          │
+        ▲                │  /documents/ingest       │
+        │  SSE           │  /query   (SSE stream)   │
+        │                │  /compare /documents …   │
+        └──────────────  │                          │
+                         └─────────┬────────────────┘
+                                   │
+              ┌────────────────────┼─────────────────────┐
+        Pinecone (vectors,    In-RAM BM25 corpus     OpenAI / Ollama
+        per-session namespace)  + session store        (LLM + embeddings)
 ```
+
+Ingestion: `PDF → chunk → embed → upsert into the session's Pinecone namespace`.
+Query: `embed question → vector search + BM25 → merge/dedupe → stream answer + cite`.
+
+### Privacy model
+
+- Each browser gets a random **session id** that maps to its own **Pinecone
+  namespace**. One session can never retrieve another session's documents.
+- Sessions are held **in memory only** — no database, nothing written to disk.
+- Idle sessions (and their vectors) are **auto-deleted** after `SESSION_TTL_MINUTES`.
 
 ---
 
-## Tech Stack
+## Tech stack
 
-| Component | Tool |
+| Layer | Tech |
 |---|---|
-| LLM | OpenAI (GPT-4o, GPT-4o-mini) or Ollama (Mistral, Llama3, Phi3, Gemma2) |
-| Embeddings | OpenAI text-embedding-3-small or nomic-embed-text via Ollama |
-| Vector store | Pinecone (serverless cloud) |
-| Keyword search | BM25 via rank_bm25 |
+| Frontend | React 18 + TypeScript + Vite |
+| Backend | FastAPI + Uvicorn, Server-Sent Events streaming |
 | Orchestration | LangChain |
-| UI | Streamlit |
-| PDF loading | PyPDF + LangChain |
-| Testing | pytest + LLM-as-judge |
-| Deployment | Docker + Hugging Face Spaces |
+| Vector store | Pinecone (serverless), one namespace per session |
+| Keyword search | BM25 (`rank_bm25`), in-memory per session |
+| LLM | OpenAI (GPT-4o / 4o-mini) or Ollama (Mistral, Llama3, …) |
+| Embeddings | `text-embedding-3-small` or `nomic-embed-text` (Ollama) |
+| Packaging | Multi-stage Docker (one image serves API + SPA) |
+| Tests | pytest (API wiring + LLM-as-judge RAG eval) |
 
 ---
 
-## Quickstart
+## Project structure
 
-### 1. Clone the repo
-```bash
-git clone https://github.com/JashB-28/docmind.git
-cd docmind
 ```
-
-### 2. Install dependencies
-```bash
-pip install -r requirements.txt
-```
-
-### 3. Set up environment variables
-Create a `.env` file in the root directory:
-```
-LLM_BACKEND=openai
-EMBEDDING_BACKEND=openai
-OPENAI_API_KEY=sk-...
-OPENAI_LLM_MODEL=gpt-4o-mini
-OPENAI_EMBEDDING_MODEL=text-embedding-3-small
-
-# Pinecone — create a free API key at https://app.pinecone.io
-PINECONE_API_KEY=pcsk_...
-# Optional (defaults shown)
-# PINECONE_INDEX_PREFIX=docmind
-# PINECONE_CLOUD=aws
-# PINECONE_REGION=us-east-1
-
-# Only needed if switching to Ollama
-OLLAMA_LLM_MODEL=mistral
-OLLAMA_EMBEDDING_MODEL=nomic-embed-text
-```
-
-### 4. Add your PDFs
-```bash
-mkdir data
-# Copy your PDF files into the data/ folder
-```
-
-### 5. Index your documents
-```bash
-python populate_database.py
-```
-
-### 6. Run the app
-```bash
-streamlit run app.py
+backend/
+├── rag/                # core RAG library
+│   ├── config.py       # typed pydantic-settings config
+│   ├── embeddings.py   # OpenAI / Ollama embeddings
+│   ├── vector_store.py # Pinecone + per-session namespaces
+│   ├── ingest.py       # load → chunk → upsert
+│   └── query.py        # hybrid retrieval + blocking & streaming query
+├── api/
+│   ├── main.py         # FastAPI app, CORS, serves the built SPA
+│   ├── schemas.py      # request/response models
+│   ├── sessions.py     # in-memory, TTL-evicted session store
+│   └── routers/        # health · documents · query (SSE) · compare
+├── tests/              # test_api.py (no secrets) · test_rag.py (LLM judge)
+└── requirements.txt
+frontend/               # Vite + React + TS chat UI (streams answers)
+Dockerfile              # builds the SPA, serves it from FastAPI
+docker-compose.yml
 ```
 
 ---
 
-## Switching to Local Models (Ollama)
+## Quickstart (local dev)
 
-To run fully locally without any API costs:
-
-1. Install Ollama from [ollama.com](https://ollama.com) and pull models:
+### 1. Configure environment
 ```bash
-ollama pull mistral
-ollama pull nomic-embed-text
+cp .env.example .env      # then fill in OPENAI_API_KEY and PINECONE_API_KEY
 ```
 
-2. Update your `.env`:
-```
-LLM_BACKEND=ollama
-EMBEDDING_BACKEND=ollama
-```
-
-3. Re-index your documents (each backend gets its own Pinecone index, since embedding dimensions differ):
+### 2. Backend
 ```bash
-python populate_database.py --reset
+python -m venv .venv && .venv\Scripts\activate    # Windows
+pip install -r backend/requirements.txt
+cd backend && uvicorn api.main:app --reload --port 8000
 ```
 
----
-
-## Docker Deployment
-
-### Build and run locally
+### 3. Frontend (separate terminal)
 ```bash
-docker build -t docmind .
-docker run -p 7860:7860 -e OPENAI_API_KEY=your-key -e PINECONE_API_KEY=your-pinecone-key docmind
+cd frontend
+npm install
+npm run dev        # http://localhost:5173, proxies /api → :8000
 ```
 
-### Deploy to Hugging Face Spaces
-1. Create a new Space with **Docker** as the SDK
-2. Push this repo to the Space
-3. Add `OPENAI_API_KEY` and `PINECONE_API_KEY` in Space Settings → Secrets
+Open http://localhost:5173, upload PDFs, and start asking.
 
 ---
 
-## Running Tests
+## Docker (single container)
+
+The image builds the React app and serves it from FastAPI — one process, one port.
+
 ```bash
-pytest tests -v
-```
-
-Tests use an LLM-as-judge pattern - OpenAI evaluates whether the RAG answer matches the expected response.
-
----
-
-## How Confidence Scores Work
-
-Pinecone returns a cosine similarity score for each retrieved chunk (higher = better). DocMind maps it to a human-readable confidence percentage, treating a similarity of 0.75+ as a full match:
-
-- 🟢 **70%+** - High confidence, strong semantic match
-- 🟡 **40–69%** - Medium confidence, partial match
-- 🔴 **<40%** - Low confidence, weak match
-
----
-
-## Project Structure
-
-```
-├── app.py                    # Streamlit UI
-├── query_data.py             # Hybrid RAG pipeline with memory + citations
-├── populate_database.py      # PDF ingestion + Pinecone indexing
-├── vector_store.py           # Pinecone index management + BM25 corpus cache
-├── get_embedding_function.py # Embedding model config (OpenAI or Ollama)
-├── requirements.txt
-├── Dockerfile
-├── tests/                    # Automated RAG evaluation tests (pytest + LLM-as-judge)
-├── scripts/                  # Deploy helpers (push_all.bat, test_local.bat)
-├── data/                     # Drop your PDFs here
-└── bm25_corpus/              # Local keyword-search cache (auto-generated)
+docker compose up --build      # → http://localhost:8000
 ```
 
 ---
 
-## Skills Demonstrated
+## Deploying on EC2 (beside other apps)
 
-`RAG` `LangChain` `Pinecone` `Hybrid Search` `BM25` `Vector Embeddings` `OpenAI API` `Ollama` `Local LLMs` `Streamlit` `Prompt Engineering` `Conversational Memory` `Semantic Search` `Docker` `pytest` `Python`
+```bash
+# on the instance
+git clone <repo> && cd knowledgebaseai
+cp .env.example .env && nano .env          # add your keys
+docker compose up -d --build               # serves on :8000
+```
 
+Pick a host port that doesn't clash with your other services by editing the
+`ports:` mapping in `docker-compose.yml` (e.g. `"8090:8000"`), then put it behind
+your existing Nginx/reverse proxy. Tighten `CORS_ORIGINS` to your domain in `.env`.
+
+---
+
+## API
+
+| Method | Path | Purpose |
+|---|---|---|
+| `GET`  | `/api/health` | Liveness + config status |
+| `POST` | `/api/documents/ingest` | Upload + index PDFs into the session namespace |
+| `GET`  | `/api/documents/{session_id}` | List a session's indexed files |
+| `DELETE` | `/api/documents/{session_id}` | Wipe a session's vectors |
+| `POST` | `/api/query` | Ask a question — **streams** SSE: `sources`, `token`…, `done` |
+| `POST` | `/api/compare` | Answer the same question across two documents |
+
+Interactive docs at `/docs` when the server is running.
+
+---
+
+## Tests
+
+```bash
+cd backend
+pytest tests/test_api.py -v          # no secrets needed
+pytest tests/test_rag.py -v          # needs keys + indexed docs (LLM-as-judge)
+```
+
+---
+
+## How confidence scores work
+
+Pinecone returns a cosine similarity per retrieved chunk. DocMind maps it to a
+percentage, treating ≥ 0.75 similarity as a full match:
+
+- 🟢 **70%+** — high confidence · 🟡 **40–69%** — medium · 🔴 **<40%** — low
+
+---
+
+## Skills demonstrated
+
+`RAG` `FastAPI` `React` `TypeScript` `SSE Streaming` `LangChain` `Pinecone`
+`Hybrid Search` `BM25` `Vector Embeddings` `OpenAI` `Ollama` `Docker`
+`Multi-tenant namespaces` `pytest` `Python`

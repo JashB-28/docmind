@@ -1,4 +1,4 @@
-"""Make the project root importable so tests can import the app modules."""
+"""Make the backend package root importable so tests can import rag.*"""
 
 import os
 import sys

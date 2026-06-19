@@ -1,0 +1,23 @@
+# Pinned to the versions validated on Python 3.13 (LangChain 1.x).
+# Web layer
+fastapi==0.137.2
+uvicorn[standard]==0.49.0
+python-multipart==0.0.32
+pydantic-settings==2.14.1
+
+# RAG stack
+langchain==1.3.10
+langchain-core==1.4.8
+langchain-community==0.4.2
+langchain-openai==1.3.2
+langchain-ollama==1.1.0
+langchain-pinecone==0.2.13
+langchain-text-splitters==1.1.2
+pinecone==7.3.0
+pypdf==6.13.3
+rank_bm25==0.2.2
+python-dotenv==1.2.2
+
+# Dev / tests
+pytest==9.1.0
+httpx==0.28.1

@@ -1,50 +1,59 @@
+"""PDF ingestion: load → chunk → embed → upsert into a Pinecone namespace.
+
+``index_documents`` returns both the total vector count and the chunk list, so
+callers (the API) can hold the chunks in memory for BM25 without ever writing
+them to disk.
+"""
+
+import argparse
 import os
 import sys
-import argparse
+from dataclasses import dataclass
+
 from langchain_community.document_loaders import PyPDFDirectoryLoader
-from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.documents import Document
-from vector_store import clear_database, get_existing_ids, get_vector_store, save_corpus
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+
+from .config import settings
+from .vector_store import (
+    clear_database,
+    get_existing_ids,
+    get_vector_store,
+    save_corpus,
+)
 
 DATA_PATH = "data"
 UPSERT_BATCH_SIZE = 64
 
 
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--reset", action="store_true", help="Reset the database.")
-    parser.add_argument("--backend", choices=["openai", "ollama"], default=os.getenv("EMBEDDING_BACKEND", "openai"))
-    parser.add_argument("--api-key", default="", help="API key to use for OpenAI embeddings.")
-    args = parser.parse_args()
-    try:
-        if args.reset:
-            print("Clearing Database")
-            clear_database(args.backend)
-
-        count = index_documents(backend=args.backend, api_key=args.api_key)
-    except RuntimeError as exc:
-        print(f"Error: {exc}")
-        sys.exit(1)
-    print(f"Done. Total chunks in DB: {count}")
+@dataclass
+class IngestResult:
+    total_chunks: int
+    chunks: list[Document]
 
 
-def index_documents(backend: str = "openai", api_key: str = "") -> int:
-    """Load PDFs from data/, chunk them, and upsert new chunks into Pinecone.
+def index_documents(
+    data_path: str = DATA_PATH,
+    backend: str = "openai",
+    api_key: str = "",
+    namespace: str | None = None,
+) -> IngestResult:
+    """Load PDFs from ``data_path``, chunk them, and upsert new chunks.
 
-    Returns the total number of chunks in the index afterwards.
+    Returns the total chunk count in the namespace plus the full chunk list.
     """
     # Connect to Pinecone first so credential problems fail fast,
     # before any time is spent parsing PDFs.
-    store = get_vector_store(backend=backend, api_key=api_key)
+    store = get_vector_store(backend=backend, api_key=api_key, namespace=namespace)
 
-    documents = load_documents()
+    documents = load_documents(data_path)
     if not documents:
-        raise RuntimeError(f"No PDF pages found in {DATA_PATH}/. Add PDFs first.")
+        raise RuntimeError(f"No PDF pages found in {data_path}/. Add PDFs first.")
 
     chunks = split_documents(documents)
     chunks = calculate_chunk_ids(chunks)
-    existing_ids = get_existing_ids(backend)
-    print(f"Existing chunks in DB: {len(existing_ids)}")
+    existing_ids = get_existing_ids(backend, namespace=namespace)
+    print(f"Existing chunks in namespace: {len(existing_ids)}")
 
     new_chunks = [c for c in chunks if c.metadata["id"] not in existing_ids]
 
@@ -56,18 +65,16 @@ def index_documents(backend: str = "openai", api_key: str = "") -> int:
     else:
         print("No new chunks to add")
 
-    # data/ always holds the full corpus, so rebuild the BM25 cache from scratch.
-    save_corpus(chunks, backend=backend)
-
-    return len(existing_ids | {c.metadata["id"] for c in new_chunks})
+    total = len(existing_ids | {c.metadata["id"] for c in new_chunks})
+    return IngestResult(total_chunks=total, chunks=chunks)
 
 
-def load_documents():
-    if not os.path.isdir(DATA_PATH):
+def load_documents(data_path: str = DATA_PATH):
+    if not os.path.isdir(data_path):
         return []
-    loader = PyPDFDirectoryLoader(DATA_PATH)
+    loader = PyPDFDirectoryLoader(data_path)
     documents = loader.load()
-    print(f"Loaded {len(documents)} pages from {DATA_PATH}/")
+    print(f"Loaded {len(documents)} pages from {data_path}/")
     return documents
 
 
@@ -118,6 +125,31 @@ def sanitize_metadata(metadata: dict) -> dict:
         elif isinstance(value, list) and all(isinstance(v, str) for v in value):
             clean[key] = value
     return clean
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--reset", action="store_true", help="Reset the database.")
+    parser.add_argument(
+        "--backend",
+        choices=["openai", "ollama"],
+        default=settings.embedding_backend,
+    )
+    parser.add_argument("--api-key", default="", help="API key for OpenAI embeddings.")
+    args = parser.parse_args()
+    try:
+        if args.reset:
+            print("Clearing Database")
+            clear_database(args.backend)
+
+        result = index_documents(backend=args.backend, api_key=args.api_key)
+        # Standalone CLI use writes the corpus to disk so the CLI query path
+        # (default namespace) has a BM25 corpus to load.
+        save_corpus(result.chunks, backend=args.backend)
+    except RuntimeError as exc:
+        print(f"Error: {exc}")
+        sys.exit(1)
+    print(f"Done. Total chunks in DB: {result.total_chunks}")
 
 
 if __name__ == "__main__":

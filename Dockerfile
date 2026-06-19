@@ -1,48 +1,25 @@
-# ── Base image ────────────────────────────────────────────────────────────────
-FROM python:3.11-slim
+# ── Stage 1: build the React frontend ────────────────────────────────────────
+FROM node:20-alpine AS frontend
+WORKDIR /frontend
+COPY frontend/package.json frontend/package-lock.json* ./
+RUN npm install --no-fund --no-audit
+COPY frontend/ ./
+RUN npm run build
 
-# ── System dependencies ───────────────────────────────────────────────────────
-RUN apt-get update && apt-get install -y \
-    build-essential \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
+# ── Stage 2: Python backend that also serves the built frontend ───────────────
+FROM python:3.13-slim
+WORKDIR /app/backend
 
-# ── Working directory ─────────────────────────────────────────────────────────
-WORKDIR /app
+ENV PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    STATIC_DIR=static
 
-# ── Install Python dependencies ───────────────────────────────────────────────
-# Copy requirements first so Docker caches this layer
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY backend/requirements.txt ./
+RUN pip install -r requirements.txt
 
-# ── Copy application code ─────────────────────────────────────────────────────
-COPY app.py .
-COPY query_data.py .
-COPY populate_database.py .
-COPY get_embedding_function.py .
-COPY vector_store.py .
+COPY backend/ ./
+# Drop the compiled SPA where FastAPI serves it from (STATIC_DIR=static).
+COPY --from=frontend /frontend/dist ./static
 
-# ── Create runtime directories ────────────────────────────────────────────────
-# data/        → users upload PDFs here at runtime
-# bm25_corpus/ → local keyword-search cache (vectors live in Pinecone)
-RUN mkdir -p data bm25_corpus
-
-# ── Streamlit config ──────────────────────────────────────────────────────────
-RUN mkdir -p /app/.streamlit
-RUN echo '\
-[server]\n\
-port = 7860\n\
-enableCORS = false\n\
-enableXsrfProtection = false\n\
-headless = true\n\
-\n\
-[browser]\n\
-gatherUsageStats = false\n\
-' > /app/.streamlit/config.toml
-
-# ── Expose port ───────────────────────────────────────────────────────────────
-# Hugging Face Spaces requires port 7860
-EXPOSE 7860
-
-# ── Run ───────────────────────────────────────────────────────────────────────
-CMD ["streamlit", "run", "app.py", "--server.port=7860", "--server.address=0.0.0.0"]
+EXPOSE 8000
+CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000"]

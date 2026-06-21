@@ -21,12 +21,15 @@ Supports both OpenAI cloud models and local Ollama models.
         └──────────────  │                          │
                          └─────────┬────────────────┘
                                    │
-              ┌────────────────────┼─────────────────────┐
-        Pinecone (vectors,    In-RAM BM25 corpus     OpenAI / Ollama
-        per-session namespace)  + session store        (LLM + embeddings)
+          ┌──────────────┬──────────┴───┬──────────────┬──────────────┐
+     Pinecone        In-RAM BM25     S3 (source     OpenAI / Bedrock
+     (vectors,       + session       PDFs, presigned  / Ollama
+     per-session     store           URLs, ephemeral) (LLM + embeddings)
+     namespace)
 ```
 
-Ingestion: `PDF → chunk → embed → upsert into the session's Pinecone namespace`.
+Ingestion: `PDF → chunk → embed → upsert into the session's Pinecone namespace`
+(the original PDF is also stored in S3 for presigned download, if enabled).
 Query: `rewrite → vector search + BM25 → RRF fuse → (rerank) → stream answer + cite`.
 
 ### Retrieval pipeline
@@ -45,8 +48,10 @@ Query: `rewrite → vector search + BM25 → RRF fuse → (rerank) → stream an
 
 - Each browser gets a random **session id** that maps to its own **Pinecone
   namespace**. One session can never retrieve another session's documents.
-- Sessions are held **in memory only** — no database, nothing written to disk.
+- Sessions are held **in memory only** — no database, nothing written to local disk.
 - Idle sessions (and their vectors) are **auto-deleted** after `SESSION_TTL_MINUTES`.
+- Source PDFs in S3 are isolated per session and removed on clear/TTL, with a
+  bucket **lifecycle rule** expiring any stragglers — ephemeral, not persistent.
 
 ---
 
@@ -60,8 +65,9 @@ Query: `rewrite → vector search + BM25 → RRF fuse → (rerank) → stream an
 | Vector store | Pinecone (serverless), one namespace per session |
 | Keyword search | BM25 (`rank_bm25`), in-memory per session |
 | Fusion / rerank | Reciprocal Rank Fusion + optional cross-encoder (Cohere / local) |
-| LLM | OpenAI (GPT-4o / 4o-mini), Amazon Bedrock (Claude 3.5 / Llama 3), or Ollama |
+| LLM | OpenAI (GPT-4o / 4o-mini), Amazon Bedrock (Claude Sonnet 4.5), or Ollama |
 | Embeddings | OpenAI, Bedrock (Titan), or Ollama (`nomic-embed-text`) |
+| Object storage | Amazon S3 — source PDFs + presigned downloads, lifecycle-expired |
 | Packaging | Multi-stage Docker (one image serves API + SPA) |
 | Observability | Structured JSON logs + request ids · optional Langfuse LLM tracing |
 | Evaluation | RAGAS (faithfulness, answer relevancy, context precision/recall) |
@@ -76,8 +82,9 @@ Query: `rewrite → vector search + BM25 → RRF fuse → (rerank) → stream an
 backend/
 ├── rag/                # core RAG library
 │   ├── config.py       # typed pydantic-settings config
-│   ├── embeddings.py   # OpenAI / Ollama embeddings
+│   ├── embeddings.py   # OpenAI / Bedrock / Ollama embeddings
 │   ├── vector_store.py # Pinecone + per-session namespaces
+│   ├── storage.py      # optional S3 store for source PDFs (presigned URLs)
 │   ├── ingest.py       # load → chunk → upsert
 │   ├── query.py        # rewrite → hybrid retrieve → RRF → rerank → (stream) answer
 │   └── reranker.py     # pluggable cross-encoder rerank (none/cohere/local)
@@ -225,4 +232,5 @@ percentage, treating ≥ 0.75 similarity as a full match:
 `Hybrid Search` `BM25` `RRF` `Cross-encoder Reranking` `Query Rewriting`
 `Vector Embeddings` `OpenAI` `Amazon Bedrock` `Ollama` `Docker` `Multi-tenant namespaces`
 `Observability` `Langfuse` `RAGAS Eval` `GitHub Actions CI/CD` `Structured Logging`
-`AWS` `Docker Hub` `OIDC` `SSM` `Caddy / Let's Encrypt` `pytest` `Python`
+`AWS` `Amazon S3` `IAM Roles` `Presigned URLs` `Docker Hub` `OIDC` `SSM`
+`Caddy / Let's Encrypt` `pytest` `Python`

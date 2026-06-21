@@ -22,6 +22,19 @@ Bedrock works on the box via an **EC2 instance role** — no AWS keys on disk.
   settings → Modify instance metadata options) so the container can read the
   role. Without this, Bedrock fails from inside Docker.
 
+## Optional — S3 source-document storage
+To store uploaded PDFs in S3 (presigned downloads, auto-expiry):
+1. Create a private bucket (e.g. `docmind-uploads-<unique>`) in `AWS_REGION`, and
+   add a **lifecycle rule** expiring objects after ~1 day.
+2. Add an inline policy to the instance role for that bucket:
+   ```json
+   { "Version": "2012-10-17", "Statement": [{
+       "Effect": "Allow",
+       "Action": ["s3:PutObject","s3:GetObject","s3:DeleteObject","s3:ListBucket"],
+       "Resource": ["arn:aws:s3:::BUCKET","arn:aws:s3:::BUCKET/*"] }] }
+   ```
+3. Set `S3_BUCKET=<bucket>` in `.env` and redeploy. Leave it blank to disable.
+
 ## Option A — behind an existing reverse proxy (Caddy)
 ```bash
 # DocMind joins the proxy's Docker network; publishes no host port.

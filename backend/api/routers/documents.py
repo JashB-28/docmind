@@ -1,17 +1,18 @@
 import os
 import tempfile
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from rag.config import settings
 from rag.ingest import index_documents
 
+from api.limits import rate_limit
 from api.schemas import DocumentsResponse, IngestResponse
 from api.sessions import sessions
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
 
-@router.post("/ingest", response_model=IngestResponse)
+@router.post("/ingest", response_model=IngestResponse, dependencies=[Depends(rate_limit)])
 async def ingest(
     files: list[UploadFile] = File(...),
     session_id: str = Form(""),
@@ -20,6 +21,8 @@ async def ingest(
 ) -> IngestResponse:
     if not settings.pinecone_api_key.strip():
         raise HTTPException(503, "Server is missing PINECONE_API_KEY.")
+    if provider == "ollama" and not settings.enable_ollama:
+        raise HTTPException(400, "The Ollama provider is disabled on this deployment.")
     if provider == "openai" and not (api_key or settings.openai_api_key):
         raise HTTPException(400, "An OpenAI API key is required for the OpenAI provider.")
 

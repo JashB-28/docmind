@@ -49,7 +49,9 @@ class Settings(BaseSettings):
     # role) — no keys stored here. Enable model access in the Bedrock console and
     # make sure the IDs below are available in your region.
     aws_region: str = "us-east-1"
-    bedrock_llm_model: str = "anthropic.claude-3-5-sonnet-20240620-v1:0"
+    # Current Claude models on Bedrock require a cross-region inference profile
+    # (the "us."/"global." prefix) — raw model ids are not on-demand invokable.
+    bedrock_llm_model: str = "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
     bedrock_embedding_model: str = "amazon.titan-embed-text-v2:0"
 
     # ── API / sessions ────────────────────────────────────────────────────────
@@ -60,6 +62,18 @@ class Settings(BaseSettings):
     # Hard limits on uploads to protect the box.
     max_upload_mb: int = 25
     max_pages_per_doc: int = 400
+
+    # ── Public deployment controls ────────────────────────────────────────────
+    # Which provider the UI selects by default, and whether to offer Ollama.
+    # On the public site: DEFAULT_PROVIDER=bedrock, ENABLE_OLLAMA=false (no Ollama
+    # server runs there). Locally, leave Ollama on.
+    default_provider: str = "openai"
+    enable_ollama: bool = True
+    # Abuse guards on the cost endpoints (query/compare/ingest):
+    #   per-IP sliding window + a site-wide daily cap. In-memory, no deps.
+    rate_limit_max_requests: int = 20      # per IP ...
+    rate_limit_window_seconds: int = 60    # ... per this many seconds
+    daily_request_cap: int = 500           # site-wide ceiling per day (0 = off)
 
     # ── Observability (Phase 4) ───────────────────────────────────────────────
     log_level: str = "INFO"

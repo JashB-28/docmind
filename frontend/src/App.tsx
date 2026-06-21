@@ -14,6 +14,12 @@ import type { ChatMessage, Health, Provider } from "./types";
 
 type Theme = "light" | "dark";
 
+const DEFAULT_MODEL: Record<Provider, string> = {
+  openai: "gpt-4o-mini",
+  bedrock: "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
+  ollama: "mistral",
+};
+
 function initialTheme(): Theme {
   const saved = localStorage.getItem("docmind_theme");
   if (saved === "light" || saved === "dark") return saved;
@@ -42,7 +48,19 @@ export default function App() {
   }, [theme]);
 
   useEffect(() => {
-    getHealth().then(setHealth).catch(() => setHealth(null));
+    getHealth()
+      .then((h) => {
+        setHealth(h);
+        if (h.default_provider) {
+          setProvider(h.default_provider);
+          setModel(DEFAULT_MODEL[h.default_provider] ?? model);
+        }
+      })
+      .catch(() => setHealth(null));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
     listDocuments(sessionId).then(setDocuments).catch(() => {});
   }, [sessionId]);
 
@@ -133,6 +151,7 @@ export default function App() {
         onUpload={handleUpload}
         onClear={handleClear}
         health={health}
+        ollamaEnabled={health?.enable_ollama ?? true}
       />
 
       <main className="main">

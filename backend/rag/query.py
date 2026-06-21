@@ -76,7 +76,7 @@ def _infer_provider(model_name: str | None) -> str:
     """Best-effort provider from a bare model name (CLI/legacy callers)."""
     if model_name and model_name.startswith("gpt"):
         return "openai"
-    if model_name and (model_name.startswith(("anthropic.", "amazon.", "meta.", "us."))):
+    if model_name and (model_name.startswith(("anthropic.", "amazon.", "meta.", "us.", "global."))):
         return "bedrock"
     if model_name:
         return "ollama"

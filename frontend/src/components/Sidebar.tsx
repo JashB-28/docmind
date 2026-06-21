@@ -4,9 +4,9 @@ import type { Health, Provider } from "../types";
 const OPENAI_MODELS = ["gpt-4o-mini", "gpt-4o", "gpt-3.5-turbo"];
 const OLLAMA_MODELS = ["mistral", "llama3", "llama3.2", "phi3", "gemma2"];
 const BEDROCK_MODELS = [
-  "anthropic.claude-3-5-sonnet-20240620-v1:0",
-  "anthropic.claude-3-haiku-20240307-v1:0",
-  "meta.llama3-1-8b-instruct-v1:0",
+  "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
+  "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+  "us.anthropic.claude-opus-4-5-20251101-v1:0",
 ];
 
 const MODELS_BY_PROVIDER: Record<Provider, string[]> = {
@@ -27,6 +27,7 @@ interface Props {
   onUpload: (files: File[]) => void;
   onClear: () => void;
   health: Health | null;
+  ollamaEnabled: boolean;
 }
 
 export default function Sidebar(props: Props) {
@@ -42,6 +43,7 @@ export default function Sidebar(props: Props) {
     onUpload,
     onClear,
     health,
+    ollamaEnabled,
   } = props;
   const fileRef = useRef<HTMLInputElement>(null);
   const [staged, setStaged] = useState<File[]>([]);
@@ -72,12 +74,14 @@ export default function Sidebar(props: Props) {
         >
           Bedrock
         </button>
-        <button
-          className={provider === "ollama" ? "seg-btn active" : "seg-btn"}
-          onClick={() => switchProvider("ollama")}
-        >
-          Ollama
-        </button>
+        {ollamaEnabled && (
+          <button
+            className={provider === "ollama" ? "seg-btn active" : "seg-btn"}
+            onClick={() => switchProvider("ollama")}
+          >
+            Ollama
+          </button>
+        )}
       </div>
       {provider === "bedrock" && (
         <div className="hint">Uses the server's AWS credentials — no key needed.</div>

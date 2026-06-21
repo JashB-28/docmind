@@ -14,4 +14,6 @@ def health() -> HealthResponse:
         pinecone_configured=bool(settings.pinecone_api_key.strip()),
         default_llm_backend=settings.llm_backend,
         active_sessions=len(sessions._sessions),
+        default_provider=settings.default_provider,
+        enable_ollama=settings.enable_ollama,
     )

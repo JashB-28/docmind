@@ -20,4 +20,6 @@ export interface Health {
   pinecone_configured: boolean;
   default_llm_backend: string;
   active_sessions: number;
+  default_provider: Provider;
+  enable_ollama: boolean;
 }

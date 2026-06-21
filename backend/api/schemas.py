@@ -57,3 +57,5 @@ class HealthResponse(BaseModel):
     pinecone_configured: bool
     default_llm_backend: str
     active_sessions: int
+    default_provider: str
+    enable_ollama: bool

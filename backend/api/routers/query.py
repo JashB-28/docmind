@@ -1,10 +1,11 @@
 import json
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from rag.config import settings
 from rag.query import query_rag, stream_rag
 
+from api.limits import rate_limit
 from api.observability import get_langfuse_handler
 from api.schemas import CompareAnswer, CompareRequest, CompareResponse, QueryRequest
 from api.sessions import sessions
@@ -15,6 +16,11 @@ router = APIRouter(tags=["query"])
 def _callbacks():
     handler = get_langfuse_handler()
     return [handler] if handler else None
+
+
+def _check_provider(provider: str) -> None:
+    if provider == "ollama" and not settings.enable_ollama:
+        raise HTTPException(400, "The Ollama provider is disabled on this deployment.")
 
 
 def _resolve_model(provider: str, model: str | None) -> str:
@@ -29,11 +35,12 @@ def _sse(event: str, data) -> str:
     return f"event: {event}\ndata: {json.dumps(data)}\n\n"
 
 
-@router.post("/query")
+@router.post("/query", dependencies=[Depends(rate_limit)])
 def query(req: QueryRequest) -> StreamingResponse:
     """Stream an answer as Server-Sent Events: sources, then tokens, then done."""
     if not settings.pinecone_api_key.strip():
         raise HTTPException(503, "Server is missing PINECONE_API_KEY.")
+    _check_provider(req.provider)
 
     session = sessions.get(req.session_id)
     corpus = session.corpus if session else []
@@ -68,10 +75,11 @@ def query(req: QueryRequest) -> StreamingResponse:
     )
 
 
-@router.post("/compare", response_model=CompareResponse)
+@router.post("/compare", response_model=CompareResponse, dependencies=[Depends(rate_limit)])
 def compare(req: CompareRequest) -> CompareResponse:
     if not settings.pinecone_api_key.strip():
         raise HTTPException(503, "Server is missing PINECONE_API_KEY.")
+    _check_provider(req.provider)
 
     session = sessions.get(req.session_id)
     corpus = session.corpus if session else []

@@ -34,7 +34,9 @@ Then add a site block to the proxy's Caddyfile and reload it:
 ```
 your.domain {
         encode gzip
-        reverse_proxy docmind:8000 { flush_interval -1 }
+        reverse_proxy docmind:8000 {
+                flush_interval -1
+        }
 }
 ```
 ```bash

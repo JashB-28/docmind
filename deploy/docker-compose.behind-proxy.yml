@@ -5,8 +5,13 @@
 # Set PROXY_NETWORK to the external network your proxy is on, e.g.:
 #   PROXY_NETWORK=scoutone_default docker compose -f deploy/docker-compose.behind-proxy.yml up -d
 #
-# Then add a site block to that proxy's config:
-#   your.domain { reverse_proxy docmind:8000 { flush_interval -1 } }
+# Then add a site block to that proxy's config (directives on their own lines —
+# Caddy rejects an inline "{ ... }"):
+#   your.domain {
+#           reverse_proxy docmind:8000 {
+#                   flush_interval -1
+#           }
+#   }
 # (flush_interval -1 keeps SSE token streaming working through the proxy.)
 services:
   docmind:

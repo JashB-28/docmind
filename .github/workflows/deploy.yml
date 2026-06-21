@@ -1,6 +1,6 @@
 name: Deploy (CD)
 
-# Manual button by default so it never runs until you've set up the AWS side.
+# Manual button by default so it never runs until you've configured the secrets.
 # To deploy automatically on every merge to main, uncomment the `push` trigger.
 on:
   workflow_dispatch:
@@ -8,12 +8,12 @@ on:
   #   branches: [main]
 
 permissions:
-  id-token: write   # required for GitHub OIDC → AWS (keyless auth)
+  id-token: write   # for GitHub OIDC → AWS (used by the SSM deploy step)
   contents: read
 
 env:
   AWS_REGION: us-east-1
-  ECR_REPOSITORY: docmind
+  IMAGE: jash09/docmind
 
 jobs:
   deploy:
@@ -21,26 +21,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Exchange a short-lived GitHub OIDC token for temporary AWS credentials.
-      # No access keys are ever stored in GitHub — only the role ARN.
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push image
+        run: |
+          docker build -t "$IMAGE:latest" -t "$IMAGE:${{ github.sha }}" .
+          docker push "$IMAGE:latest"
+          docker push "$IMAGE:${{ github.sha }}"
+
+      # Temporary AWS creds via OIDC — only needed to send the SSM command.
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
-
-      - name: Log in to Amazon ECR
-        id: ecr
-        uses: aws-actions/amazon-ecr-login@v2
-
-      - name: Build and push image to ECR
-        env:
-          REGISTRY: ${{ steps.ecr.outputs.registry }}
-        run: |
-          IMAGE="$REGISTRY/$ECR_REPOSITORY"
-          docker build -t "$IMAGE:latest" -t "$IMAGE:${{ github.sha }}" .
-          docker push "$IMAGE:latest"
-          docker push "$IMAGE:${{ github.sha }}"
 
       # Tell the EC2 box to pull the new image and restart — over SSM, so there
       # is no inbound SSH and no SSH key to manage.

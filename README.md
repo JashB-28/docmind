@@ -86,15 +86,18 @@ backend/
 │   ├── schemas.py      # request/response models
 │   ├── sessions.py     # in-memory, TTL-evicted session store
 │   ├── observability.py# JSON logging, request-id middleware, Langfuse tracing
+│   ├── limits.py       # per-IP rate limit + daily cap on cost endpoints
 │   └── routers/        # health · documents · query (SSE) · compare
 ├── eval/               # RAGAS harness: golden.json + run_ragas.py
-├── tests/              # test_api.py · test_retrieval.py (no secrets) · test_rag.py
-├── requirements.txt    # base · requirements-rerank.txt · requirements-eval.txt
-└── ...
-.github/workflows/ci.yml  # lint · test · frontend build · docker build
+├── tests/              # test_api · test_retrieval · test_limits (no secrets) · test_rag
+└── requirements.txt    # base · requirements-rerank.txt · requirements-eval.txt
 frontend/               # Vite + React + TS chat UI (streams answers)
-Dockerfile              # builds the SPA, serves it from FastAPI
-docker-compose.yml
+deploy/                 # docker-compose.prod.yml · docker-compose.behind-proxy.yml
+                        # · Caddyfile · deploy.sh
+docs/DEPLOY.md          # full deployment guide
+.github/workflows/      # ci.yml (lint·test·build) · deploy.yml (Docker Hub → SSM)
+Dockerfile              # multi-stage: build SPA → serve via FastAPI
+docker-compose.yml      # local: build + run on :8000
 ```
 
 ---
@@ -147,11 +150,13 @@ Pick a host port that doesn't clash with your other services by editing the
 `ports:` mapping in `docker-compose.yml` (e.g. `"8090:8000"`), then put it behind
 your existing Nginx/reverse proxy. Tighten `CORS_ORIGINS` to your domain in `.env`.
 
-**Continuous deployment.** `docker-compose.prod.yml` + `.github/workflows/deploy.yml`
-provide a push-button (or merge-triggered) pipeline: GitHub Actions builds the
-image, pushes it to **ECR** using **keyless OIDC auth**, and rolls it out on EC2
-via **SSM**, with **Caddy** terminating HTTPS for your domain (e.g. DuckDNS) via
-auto-renewing Let's Encrypt certs. Full setup in [docs/DEPLOY.md](docs/DEPLOY.md).
+**Production / CD.** `deploy/` holds compose files for both layouts — standalone
+(`docker-compose.prod.yml`, own Caddy) and behind an existing reverse proxy
+(`docker-compose.behind-proxy.yml`). `.github/workflows/deploy.yml` is a
+push-button pipeline: GitHub Actions builds the image, pushes it to **Docker Hub**,
+then triggers the EC2 box over **SSM** (keyless **OIDC**) to pull + restart.
+**Caddy** terminates HTTPS via auto-renewing Let's Encrypt certs. Full guide in
+[docs/DEPLOY.md](docs/DEPLOY.md).
 
 ---
 
@@ -220,4 +225,4 @@ percentage, treating ≥ 0.75 similarity as a full match:
 `Hybrid Search` `BM25` `RRF` `Cross-encoder Reranking` `Query Rewriting`
 `Vector Embeddings` `OpenAI` `Amazon Bedrock` `Ollama` `Docker` `Multi-tenant namespaces`
 `Observability` `Langfuse` `RAGAS Eval` `GitHub Actions CI/CD` `Structured Logging`
-`AWS` `ECR` `ECS-ready` `OIDC` `SSM` `Caddy / Let's Encrypt` `pytest` `Python`
+`AWS` `Docker Hub` `OIDC` `SSM` `Caddy / Let's Encrypt` `pytest` `Python`

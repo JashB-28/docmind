@@ -1,0 +1,37 @@
+# Standalone production stack: runs the published image from Docker Hub, fronted
+# by Caddy which auto-provisions HTTPS (Let's Encrypt) for your domain.
+# Use this on a FRESH box that owns ports 80/443. To deploy behind an existing
+# reverse proxy, use docker-compose.behind-proxy.yml instead.
+#
+#   DOCMIND_IMAGE — image ref (default jash09/docmind:latest)
+#   DOMAIN        — your domain, e.g. docmind.duckdns.org
+# Both are read from the .env file at the repo root.
+services:
+  docmind:
+    image: ${DOCMIND_IMAGE:-jash09/docmind:latest}
+    container_name: docmind
+    env_file:
+      - ../.env
+    expose:
+      - "8000"            # internal only — Caddy is the public entrypoint
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2
+    container_name: caddy
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - DOMAIN=${DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data      # persists issued TLS certificates
+      - caddy_config:/config
+    depends_on:
+      - docmind
+    restart: unless-stopped
+
+volumes:
+  caddy_data:
+  caddy_config:

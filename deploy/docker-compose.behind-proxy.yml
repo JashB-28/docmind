@@ -1,0 +1,26 @@
+# Deploy behind an EXISTING reverse proxy (e.g. another project's Caddy/Nginx
+# already owns ports 80/443). DocMind joins that proxy's Docker network and
+# publishes no host port; the proxy routes a subdomain to docmind:8000.
+#
+# Set PROXY_NETWORK to the external network your proxy is on, e.g.:
+#   PROXY_NETWORK=scoutone_default docker compose -f deploy/docker-compose.behind-proxy.yml up -d
+#
+# Then add a site block to that proxy's config:
+#   your.domain { reverse_proxy docmind:8000 { flush_interval -1 } }
+# (flush_interval -1 keeps SSE token streaming working through the proxy.)
+services:
+  docmind:
+    image: ${DOCMIND_IMAGE:-jash09/docmind:latest}
+    container_name: docmind
+    env_file:
+      - ../.env
+    expose:
+      - "8000"
+    networks:
+      - proxy
+    restart: unless-stopped
+
+networks:
+  proxy:
+    external: true
+    name: ${PROXY_NETWORK:-web}

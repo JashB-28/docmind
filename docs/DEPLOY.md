@@ -1,112 +1,77 @@
-# Deploying DocMind (CD to EC2 + ECR, HTTPS via DuckDNS)
+# Deploying DocMind (EC2 + Docker Hub, HTTPS via Caddy)
 
-This is the one-time setup behind the `Deploy (CD)` GitHub Actions workflow.
-After it's done, deploying is a single click (or automatic on merge).
+DocMind ships as one image (`jash09/docmind:latest`) that serves the API and the
+built SPA. You pull it on the box and front it with Caddy for HTTPS. Two layouts:
 
-## The flow
+- **Behind an existing reverse proxy** (another app already owns 80/443) — join
+  that proxy's network and add a subdomain. *(This is the common case.)*
+- **Standalone** (a fresh box) — DocMind runs its own Caddy on 80/443.
 
-```
-push/merge ──▶ GitHub Actions
-                 │  (1) OIDC: assume an AWS role — no stored keys
-                 │  (2) docker build → push image to ECR
-                 │  (3) SSM Run Command → tell EC2 to deploy
-                 ▼
-              EC2 box: git pull · ecr login · compose pull · up -d
-                 ▼
-              Caddy serves https://<you>.duckdns.org  (auto Let's Encrypt cert)
-```
-
-You provide three things via GitHub repo **Secrets**:
-`AWS_DEPLOY_ROLE_ARN`, `EC2_INSTANCE_ID` (and the region/repo are in `deploy.yml`).
+Bedrock works on the box via an **EC2 instance role** — no AWS keys on disk.
 
 ---
 
-## 1. On the EC2 box (one time)
+## Prerequisites on the box (one-time)
+- Docker + the Compose plugin.
+- This repo cloned to `/opt/docmind` (or anywhere; adjust paths).
+- A `.env` at the repo root — copy `.env.example`, set `PINECONE_API_KEY`,
+  `DEFAULT_PROVIDER=bedrock`, `ENABLE_OLLAMA=false`, and `AWS_REGION`.
+- An **IAM instance role** attached with `AmazonBedrockFullAccess`
+  (+ `AmazonSSMManagedInstanceCore` for the CD pipeline).
+- **Instance metadata hop limit = 2** (EC2 → Instance → Actions → Instance
+  settings → Modify instance metadata options) so the container can read the
+  role. Without this, Bedrock fails from inside Docker.
 
+## Option A — behind an existing reverse proxy (Caddy)
 ```bash
-sudo mkdir -p /opt/docmind && sudo chown $USER /opt/docmind
-git clone https://github.com/JashB-28/docmind.git /opt/docmind
-cd /opt/docmind
-
-# Docker, compose plugin, awscli, and the SSM agent (preinstalled on Amazon
-# Linux 2023 / recent Ubuntu AMIs — install only if missing).
-# Then create the production .env:
-cp .env.example .env && nano .env
-#   set real OPENAI_API_KEY / PINECONE_API_KEY (or rely on Bedrock + the role)
-#   set DOMAIN=<you>.duckdns.org
+# DocMind joins the proxy's Docker network; publishes no host port.
+PROXY_NETWORK=<proxy_network> DOCMIND_IMAGE=jash09/docmind:latest \
+  docker compose -f deploy/docker-compose.behind-proxy.yml up -d
 ```
+Find the network with `docker inspect <proxy-container> --format '{{range $k,$v := .NetworkSettings.Networks}}{{$k}} {{end}}'`.
 
-Open **ports 80 and 443** in the instance's security group (inbound, 0.0.0.0/0).
-
-## 2. ECR repository
-
+Then add a site block to the proxy's Caddyfile and reload it:
+```
+your.domain {
+        encode gzip
+        reverse_proxy docmind:8000 { flush_interval -1 }
+}
+```
 ```bash
-aws ecr create-repository --repository-name docmind --region us-east-1
+docker exec <proxy-container> caddy reload --config /etc/caddy/Caddyfile
 ```
+`flush_interval -1` keeps SSE token streaming working through the proxy.
 
-## 3. EC2 instance role (lets the box pull from ECR + be driven by SSM)
+## Option B — standalone (fresh box, DocMind owns 80/443)
+```bash
+docker compose -f deploy/docker-compose.prod.yml pull
+docker compose -f deploy/docker-compose.prod.yml up -d
+```
+Set `DOMAIN=your.domain` in `.env`; Caddy auto-fetches the cert.
 
-Attach an IAM role to the instance with these AWS-managed policies:
-- `AmazonEC2ContainerRegistryReadOnly`  (pull images)
-- `AmazonSSMManagedInstanceCore`         (receive deploy commands)
-- `AmazonBedrockReadOnly` + Bedrock invoke (only if you use the Bedrock provider — see below)
+## DNS
+Point your domain (DuckDNS, a real domain, or `<ip>.sslip.io`) at the box's
+public IP — ideally an Elastic IP so it's stable. Ports 80/443 must be open.
 
-## 4. GitHub → AWS keyless auth (OIDC)
-
-1. **IAM → Identity providers → Add provider → OpenID Connect**
-   - URL: `https://token.actions.githubusercontent.com`
-   - Audience: `sts.amazonaws.com`
-2. **Create a role** ("GitHubDeployRole") with this trust policy (locks it to your repo):
-   ```json
-   {
-     "Version": "2012-10-17",
-     "Statement": [{
-       "Effect": "Allow",
-       "Principal": { "Federated": "arn:aws:iam::<ACCOUNT_ID>:oidc-provider/token.actions.githubusercontent.com" },
-       "Action": "sts:AssumeRoleWithWebIdentity",
-       "Condition": {
-         "StringEquals": { "token.actions.githubusercontent.com:aud": "sts.amazonaws.com" },
-         "StringLike": { "token.actions.githubusercontent.com:sub": "repo:JashB-28/docmind:*" }
-       }
-     }]
-   }
-   ```
-3. Give the role permission to **push to ECR** and **send SSM commands**:
-   - `AmazonEC2ContainerRegistryPowerUser`
-   - an inline policy allowing `ssm:SendCommand` on your instance + the
-     `AWS-RunShellScript` document.
-4. Copy the role ARN.
-
-## 5. GitHub repo secrets
-
-Repo → **Settings → Secrets and variables → Actions → New repository secret**:
-- `AWS_DEPLOY_ROLE_ARN` = the role ARN from step 4
-- `EC2_INSTANCE_ID` = e.g. `i-0abc123...`
-
-## 6. DuckDNS (free domain)
-
-1. Sign in at https://www.duckdns.org with GitHub/Google.
-2. Create a subdomain, e.g. `docmind` → you get `docmind.duckdns.org`.
-3. Set its IP to your EC2 **public IP** (the box's Elastic IP is best so it
-   doesn't change on reboot).
-4. Put `DOMAIN=docmind.duckdns.org` in the box's `.env`. Caddy does the rest
-   (fetches + renews the HTTPS certificate automatically).
-
-## 7. Deploy
-
-- GitHub → **Actions → Deploy (CD) → Run workflow**. Watch it build, push, and
-  roll out. Visit `https://docmind.duckdns.org`.
-- To deploy **automatically on every merge to main**, uncomment the `push:`
-  trigger at the top of `.github/workflows/deploy.yml`.
+## Verify
+```bash
+docker exec docmind python -c "import urllib.request;print(urllib.request.urlopen('http://127.0.0.1:8000/api/health').read())"
+```
+Then open `https://your.domain` — defaults to Bedrock, no key needed.
 
 ---
 
-## Notes
+## CI/CD (optional, `.github/workflows/deploy.yml`)
+Push-button (or merge-triggered) deploys: GitHub Actions builds the image,
+pushes it to **Docker Hub**, then triggers the box over **SSM** to pull + restart.
 
-- **First run on the box** can use the local build instead of ECR:
-  `DOMAIN=... docker compose -f docker-compose.prod.yml up -d --build` (after a
-  one-off `docker build -t docmind .`). The workflow takes over after that.
-- **Rollback**: images are tagged with the git SHA in ECR, so you can re-deploy
-  any previous `docmind:<sha>` by pulling that tag.
-- **Logs**: `docker compose -f docker-compose.prod.yml logs -f docmind` (or ship
-  the JSON logs to CloudWatch).
+Repo **secrets** required:
+- `DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN` — to push the image.
+- `AWS_DEPLOY_ROLE_ARN` — an IAM role trusting GitHub OIDC, allowed to
+  `ssm:SendCommand`. (Set up the OIDC provider: IAM → Identity providers →
+  `https://token.actions.githubusercontent.com`, audience `sts.amazonaws.com`.)
+- `EC2_INSTANCE_ID` — the target instance.
+
+`deploy/deploy.sh` runs on the box (pulls the image, `up -d`, prunes). Images are
+tagged with the git SHA on Docker Hub, so any previous `jash09/docmind:<sha>`
+can be re-deployed for rollback.

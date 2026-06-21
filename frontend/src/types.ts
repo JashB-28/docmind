@@ -22,4 +22,5 @@ export interface Health {
   active_sessions: number;
   default_provider: Provider;
   enable_ollama: boolean;
+  enable_s3: boolean;
 }

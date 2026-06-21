@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { getDocumentUrl } from "../lib/api";
 import type { Health, Provider } from "../types";
 
 const OPENAI_MODELS = ["gpt-4o-mini", "gpt-4o", "gpt-3.5-turbo"];
@@ -28,6 +29,8 @@ interface Props {
   onClear: () => void;
   health: Health | null;
   ollamaEnabled: boolean;
+  s3Enabled: boolean;
+  sessionId: string;
 }
 
 export default function Sidebar(props: Props) {
@@ -44,7 +47,14 @@ export default function Sidebar(props: Props) {
     onClear,
     health,
     ollamaEnabled,
+    s3Enabled,
+    sessionId,
   } = props;
+
+  async function openDoc(name: string) {
+    const url = await getDocumentUrl(sessionId, name);
+    if (url) window.open(url, "_blank", "noopener");
+  }
   const fileRef = useRef<HTMLInputElement>(null);
   const [staged, setStaged] = useState<File[]>([]);
 
@@ -141,11 +151,22 @@ export default function Sidebar(props: Props) {
       {documents.length > 0 && (
         <>
           <div className="section-label">Indexed</div>
-          {documents.map((d) => (
-            <div key={d} className="doc-pill">
-              📄 {d}
-            </div>
-          ))}
+          {documents.map((d) =>
+            s3Enabled ? (
+              <button
+                key={d}
+                className="doc-pill doc-link"
+                onClick={() => openDoc(d)}
+                title="Open original PDF"
+              >
+                📄 {d}
+              </button>
+            ) : (
+              <div key={d} className="doc-pill">
+                📄 {d}
+              </div>
+            )
+          )}
         </>
       )}
 

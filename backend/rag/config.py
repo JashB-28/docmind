@@ -54,6 +54,14 @@ class Settings(BaseSettings):
     bedrock_llm_model: str = "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
     bedrock_embedding_model: str = "amazon.titan-embed-text-v2:0"
 
+    # ── S3 (optional, ephemeral source-document storage) ──────────────────────
+    # Set s3_bucket to enable; blank = disabled (no-op). Uploaded PDFs are stored
+    # under s3_prefix/<session_id>/ and deleted on clear / TTL (plus a bucket
+    # lifecycle rule as a backstop). Presigned GET links expire after url_ttl.
+    s3_bucket: str = ""
+    s3_prefix: str = "uploads"
+    s3_url_ttl_seconds: int = 3600
+
     # ── API / sessions ────────────────────────────────────────────────────────
     # Comma-separated list of allowed CORS origins, or "*" for any.
     cors_origins: str = "*"

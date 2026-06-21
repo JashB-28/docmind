@@ -15,6 +15,7 @@ import uuid
 from dataclasses import dataclass, field
 
 from langchain_core.documents import Document
+from rag import storage
 from rag.config import settings
 from rag.vector_store import clear_namespace
 
@@ -63,6 +64,7 @@ class SessionManager:
                 clear_namespace(backend=session.backend, namespace=session_id)
             except Exception:
                 pass
+            storage.delete_session(session_id)
 
     def evict_expired(self) -> int:
         """Drop sessions idle longer than the configured TTL. Returns count."""
@@ -77,6 +79,7 @@ class SessionManager:
                 clear_namespace(backend=session.backend, namespace=session.session_id)
             except Exception:
                 pass
+            storage.delete_session(session.session_id)
         return len(expired)
 
 

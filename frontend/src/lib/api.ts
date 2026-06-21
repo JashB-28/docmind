@@ -44,6 +44,16 @@ export async function clearDocuments(sessionId: string): Promise<void> {
   await fetch(`${BASE}/documents/${sessionId}`, { method: "DELETE" });
 }
 
+/** Fetch a short-lived presigned S3 URL for the original PDF, or null. */
+export async function getDocumentUrl(
+  sessionId: string,
+  filename: string
+): Promise<string | null> {
+  const res = await fetch(`${BASE}/documents/${sessionId}/${encodeURIComponent(filename)}/url`);
+  if (!res.ok) return null;
+  return (await res.json()).url ?? null;
+}
+
 export type StreamEvent =
   | { type: "sources"; sources: Source[] }
   | { type: "token"; text: string }

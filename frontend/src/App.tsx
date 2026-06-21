@@ -152,6 +152,8 @@ export default function App() {
         onClear={handleClear}
         health={health}
         ollamaEnabled={health?.enable_ollama ?? true}
+        s3Enabled={health?.enable_s3 ?? false}
+        sessionId={sessionId}
       />
 
       <main className="main">

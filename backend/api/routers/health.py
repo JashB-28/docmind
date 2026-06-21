@@ -1,5 +1,6 @@
 from fastapi import APIRouter
 from rag.config import settings
+from rag.storage import s3_enabled
 
 from api.schemas import HealthResponse
 from api.sessions import sessions
@@ -16,4 +17,5 @@ def health() -> HealthResponse:
         active_sessions=len(sessions._sessions),
         default_provider=settings.default_provider,
         enable_ollama=settings.enable_ollama,
+        enable_s3=s3_enabled(),
     )

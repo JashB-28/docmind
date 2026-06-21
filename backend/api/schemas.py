@@ -59,3 +59,4 @@ class HealthResponse(BaseModel):
     active_sessions: int
     default_provider: str
     enable_ollama: bool
+    enable_s3: bool

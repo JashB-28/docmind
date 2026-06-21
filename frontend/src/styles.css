@@ -167,6 +167,17 @@ body,
 .staged {
   margin-top: 8px;
 }
+.doc-link {
+  display: block;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  font-family: inherit;
+}
+.doc-link:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
 
 .btn {
   width: 100%;

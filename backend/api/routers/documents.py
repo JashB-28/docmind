@@ -2,6 +2,7 @@ import os
 import tempfile
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from rag import storage
 from rag.config import settings
 from rag.ingest import index_documents
 
@@ -30,9 +31,9 @@ async def ingest(
     session.backend = provider
     max_bytes = settings.max_upload_mb * 1024 * 1024
 
-    # Stage uploads in a throwaway temp dir; nothing is persisted on disk.
+    # Stage uploads in a throwaway temp dir; nothing is persisted on local disk.
     with tempfile.TemporaryDirectory() as tmp_dir:
-        names: list[str] = []
+        staged: list[tuple[str, bytes]] = []
         for upload in files:
             if not upload.filename.lower().endswith(".pdf"):
                 raise HTTPException(400, f"{upload.filename} is not a PDF.")
@@ -43,8 +44,9 @@ async def ingest(
                 )
             with open(os.path.join(tmp_dir, upload.filename), "wb") as out:
                 out.write(data)
-            names.append(upload.filename)
+            staged.append((upload.filename, data))
 
+        names = [name for name, _ in staged]
         try:
             result = index_documents(
                 data_path=tmp_dir,
@@ -56,6 +58,10 @@ async def ingest(
             raise HTTPException(400, str(exc)) from exc
         except Exception as exc:  # surface indexing errors to the client
             raise HTTPException(500, f"Indexing failed: {exc}") from exc
+
+        # Persist the original PDFs to S3 (ephemeral) once indexing succeeded.
+        for name, data in staged:
+            storage.upload_document(session.session_id, name, data)
 
     # Cache the BM25 corpus in memory for this session and record filenames.
     session.corpus = result.chunks
@@ -75,6 +81,15 @@ def list_documents(session_id: str) -> DocumentsResponse:
     session = sessions.get(session_id)
     docs = session.documents if session else []
     return DocumentsResponse(session_id=session_id, documents=docs)
+
+
+@router.get("/{session_id}/{filename}/url")
+def document_url(session_id: str, filename: str) -> dict:
+    """Return a short-lived presigned S3 URL to download the original PDF."""
+    url = storage.presigned_url(session_id, filename)
+    if not url:
+        raise HTTPException(404, "Source document storage is not enabled.")
+    return {"url": url}
 
 
 @router.delete("/{session_id}")

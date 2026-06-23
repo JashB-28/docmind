@@ -76,17 +76,78 @@ Then open `https://your.domain` — defaults to Bedrock, no key needed.
 
 ---
 
-## CI/CD (optional, `.github/workflows/deploy.yml`)
-Push-button (or merge-triggered) deploys: GitHub Actions builds the image,
-pushes it to **Docker Hub**, then triggers the box over **SSM** to pull + restart.
+## CI/CD (`.github/workflows/deploy.yml`)
+Push-button deploys: GitHub Actions builds the image, pushes it to **Docker Hub**,
+then triggers the box over **SSM** to pull + restart. The workflow is
+`workflow_dispatch` only (a manual **Run workflow** button) — deliberately, since
+each live run spends real Bedrock money. To deploy automatically on every merge to
+`main`, uncomment the `push:` trigger at the top of the file.
 
-Repo **secrets** required:
-- `DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN` — to push the image.
-- `AWS_DEPLOY_ROLE_ARN` — an IAM role trusting GitHub OIDC, allowed to
-  `ssm:SendCommand`. (Set up the OIDC provider: IAM → Identity providers →
-  `https://token.actions.githubusercontent.com`, audience `sts.amazonaws.com`.)
-- `EC2_INSTANCE_ID` — the target instance.
+### Repo **secrets** required (Settings → Secrets and variables → Actions)
+- `DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN` — to push the image. Create the token at
+  Docker Hub → Account settings → Personal access tokens (Read & Write scope).
+- `AWS_DEPLOY_ROLE_ARN` — an IAM role trusting GitHub OIDC, allowed `ssm:SendCommand`
+  (see setup below).
+- `EC2_INSTANCE_ID` — the target instance (e.g. `i-0abc…`).
 
-`deploy/deploy.sh` runs on the box (pulls the image, `up -d`, prunes). Images are
-tagged with the git SHA on Docker Hub, so any previous `jash09/docmind:<sha>`
-can be re-deployed for rollback.
+### Optional repo **variable**
+- `DEPLOY_DIR` — absolute path of the clone on the box. Defaults to
+  `/home/ec2-user/docmind` if unset. Set it under Settings → Variables if your
+  clone lives elsewhere.
+
+### One-time AWS OIDC role setup
+GitHub Actions assumes a short-lived role via OIDC — no long-lived keys stored.
+
+```bash
+ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+REGION=us-east-1
+INSTANCE_ID=i-0abc...                       # your box
+REPO=JashB-28/docmind                       # owner/repo
+
+# 1. Register GitHub as an OIDC identity provider (skip if it already exists).
+aws iam create-open-id-connect-provider \
+  --url https://token.actions.githubusercontent.com \
+  --client-id-list sts.amazonaws.com \
+  --thumbprint-list 6938fd4d98bab03faadb97b34396831e3780aea1 || true
+
+# 2. Trust policy: only this repo can assume the role.
+cat > trust.json <<JSON
+{ "Version": "2012-10-17", "Statement": [{
+    "Effect": "Allow",
+    "Principal": { "Federated": "arn:aws:iam::${ACCOUNT_ID}:oidc-provider/token.actions.githubusercontent.com" },
+    "Action": "sts:AssumeRoleWithWebIdentity",
+    "Condition": {
+      "StringEquals": { "token.actions.githubusercontent.com:aud": "sts.amazonaws.com" },
+      "StringLike":  { "token.actions.githubusercontent.com:sub": "repo:${REPO}:*" } } }] }
+JSON
+aws iam create-role --role-name docmind-deploy --assume-role-policy-document file://trust.json
+
+# 3. Permission: send the deploy command to just this instance.
+cat > perms.json <<JSON
+{ "Version": "2012-10-17", "Statement": [
+  { "Effect": "Allow", "Action": "ssm:SendCommand",
+    "Resource": [
+      "arn:aws:ec2:${REGION}:${ACCOUNT_ID}:instance/${INSTANCE_ID}",
+      "arn:aws:ssm:${REGION}::document/AWS-RunShellScript" ] }] }
+JSON
+aws iam put-role-policy --role-name docmind-deploy \
+  --policy-name ssm-send --policy-document file://perms.json
+
+aws iam get-role --role-name docmind-deploy --query Role.Arn --output text   # → AWS_DEPLOY_ROLE_ARN
+```
+
+The instance also needs `AmazonSSMManagedInstanceCore` on its instance role and a
+running SSM agent (Amazon Linux ships it) for the command to land.
+
+### Box-side config (one-time, in the repo-root `.env` on the EC2 box)
+`deploy/deploy.sh` defaults to the **behind-proxy** layout. Docker Compose reads
+these from `.env` for the live deploy:
+```
+COMPOSE_FILE=deploy/docker-compose.behind-proxy.yml   # default; omit unless overriding
+PROXY_NETWORK=scoutone_default
+DOCMIND_IMAGE=jash09/docmind:latest
+```
+
+`deploy/deploy.sh` runs on the box (self-locates the repo, pulls the image,
+`up -d`, prunes). Images are tagged with the git SHA on Docker Hub, so any
+previous `jash09/docmind:<sha>` can be re-deployed for rollback.

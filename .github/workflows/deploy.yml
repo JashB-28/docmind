@@ -53,5 +53,5 @@ jobs:
             --instance-ids "${{ secrets.EC2_INSTANCE_ID }}" \
             --document-name "AWS-RunShellScript" \
             --comment "Deploy DocMind ${{ github.sha }}" \
-            --parameters commands="cd '$DEPLOY_DIR' && git pull --ff-only && bash deploy/deploy.sh" \
+            --parameters commands="cd $DEPLOY_DIR && git pull --ff-only && bash deploy/deploy.sh" \
             --region "$AWS_REGION"

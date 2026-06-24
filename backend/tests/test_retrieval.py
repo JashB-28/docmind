@@ -1,7 +1,8 @@
 """Unit tests for Phase 3 retrieval logic — no external services or keys."""
 
 from langchain_core.documents import Document
-from rag.query import chunk_key, rrf_fuse
+from rag.config import settings
+from rag.query import _should_rerank, chunk_key, rrf_fuse
 from rag.reranker import get_reranker
 
 
@@ -33,3 +34,19 @@ def test_reranker_disabled_by_default():
     # install never needs torch/cohere.
     get_reranker.cache_clear()
     assert get_reranker() is None
+
+
+def test_rerank_gate_is_confidence_adaptive():
+    # A truthy stand-in for a configured reranker; the gate never calls it.
+    reranker = object()
+    fused = [_doc("a")]
+    threshold = settings.rerank_similarity_threshold
+
+    # Confident retrieval (best similarity at/above threshold) → skip the rerank.
+    assert _should_rerank(reranker, fused, threshold + 0.05) is False
+    assert _should_rerank(reranker, fused, threshold) is False
+    # Weak retrieval (below threshold) → rerank to fix the ordering.
+    assert _should_rerank(reranker, fused, threshold - 0.05) is True
+    # No reranker configured, or no candidates → never rerank.
+    assert _should_rerank(None, fused, 0.0) is False
+    assert _should_rerank(reranker, [], 0.0) is False

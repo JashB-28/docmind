@@ -150,6 +150,19 @@ def condense_question(question: str, history: str, model, backend: str, callback
         return question
 
 
+def _should_rerank(reranker, fused: list, top_similarity: float) -> bool:
+    """Adaptive gate for the cross-encoder.
+
+    Rerank only when (a) a reranker is configured, (b) there are candidates to
+    reorder, and (c) the best vector hit is *below* the confidence threshold —
+    i.e. retrieval isn't already confident. Skipping confident queries saves the
+    cross-encoder's latency/cost where it wouldn't change the top answer.
+    """
+    if not (reranker and fused):
+        return False
+    return top_similarity < settings.rerank_similarity_threshold
+
+
 def rrf_fuse(rankings: list[list[Document]], k: int) -> list[Document]:
     """Reciprocal Rank Fusion: combine ranked lists by rank position.
 
@@ -205,10 +218,12 @@ def _retrieve(
     # Fuse the two rankings with RRF, then trim to the candidate pool.
     fused = rrf_fuse([vector_docs, bm25_docs], k=settings.rrf_k)[: settings.fused_top_n]
 
-    # Optional cross-encoder rerank for final ordering.
+    # Optional cross-encoder rerank for final ordering — applied adaptively: skip
+    # it when the top vector hit is already confident (see _should_rerank).
     rerank_score_map: dict[str, float] = {}
     reranker = get_reranker()
-    if reranker and fused:
+    top_similarity = max(vector_score_map.values(), default=0.0)
+    if _should_rerank(reranker, fused, top_similarity):
         reranked = reranker(retrieval_query, fused)
         docs = [doc for doc, _ in reranked]
         rerank_score_map = {chunk_key(doc): score for doc, score in reranked}
@@ -221,6 +236,7 @@ def _retrieve(
             "vector_hits": len(vector_docs),
             "bm25_hits": len(bm25_docs),
             "fused": len(fused),
+            "top_similarity": round(top_similarity, 4),
             "reranked": bool(rerank_score_map),
             "returned": len(docs),
             "retrieval_ms": round((time.perf_counter() - started) * 1000, 1),

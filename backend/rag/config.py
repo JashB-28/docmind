@@ -104,6 +104,12 @@ class Settings(BaseSettings):
     # optional deps in backend/requirements-rerank.txt.
     reranker: str = "none"
     rerank_top_n: int = 5
+    # Adaptive reranking gate: when reranking is enabled, invoke the cross-encoder
+    # only if the best vector similarity is below this threshold — i.e. retrieval
+    # isn't already confident. Pinecone cosine ~0.75 already signals a strong
+    # match. Raise toward 1.0 to rerank more often (always, in the limit); lower
+    # toward 0.0 to rerank only the weakest retrievals.
+    rerank_similarity_threshold: float = 0.75
     cohere_api_key: str = ""
     cohere_rerank_model: str = "rerank-english-v3.0"
     local_reranker_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"

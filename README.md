@@ -39,10 +39,13 @@ Query: `rewrite → vector search + BM25 → RRF fuse → (rerank) → stream an
 2. **Hybrid retrieval** — Pinecone vector search (semantic) + in-memory BM25 (keyword).
 3. **Reciprocal Rank Fusion (RRF)** — merges the two rankings by *rank position*,
    avoiding the trap of comparing cosine similarities against BM25 scores directly.
-4. **Cross-encoder rerank** *(optional)* — reorders fused candidates by true
-   query-document relevance. Pluggable via `RERANKER`: `none` (default), `cohere`
-   (hosted), or `local` (private cross-encoder on the box). Enable with
-   `backend/requirements-rerank.txt`.
+4. **Cross-encoder rerank** *(optional, confidence-adaptive)* — reorders fused
+   candidates by true query-document relevance. Pluggable via `RERANKER`: `none`
+   (default), `cohere` (hosted), or `local` (private cross-encoder on the box);
+   enable with `backend/requirements-rerank.txt`. When on, it fires **adaptively**:
+   queries whose top vector similarity already clears `RERANK_SIMILARITY_THRESHOLD`
+   skip the reranker, so the cross-encoder's cost is spent only where retrieval
+   is weak enough to need it.
 
 ### Privacy model
 

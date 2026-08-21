@@ -1,14 +1,62 @@
 [
   {
-    "question": "What is the main topic of the document?",
-    "ground_truth": "REPLACE ME — a concise correct answer for your indexed document."
+    "question": "What percentage of people killed in Virginia crashes in 2024 were men?",
+    "ground_truth": "71% of all people killed in crashes in Virginia in 2024 were men."
   },
   {
-    "question": "What are the key findings or conclusions?",
-    "ground_truth": "REPLACE ME — the expected answer grounded in your document."
+    "question": "How many traffic sign questions must you answer correctly in part one of the knowledge exam before you can take part two?",
+    "ground_truth": "You must correctly answer all ten traffic sign questions in part one of the exam before you can take part two."
   },
   {
-    "question": "Who is the intended audience or what problem does it address?",
-    "ground_truth": "REPLACE ME — expected answer for your document."
+    "question": "Holders of a valid driver's license from which countries do not need to take the two-part knowledge exam?",
+    "ground_truth": "Holders of a valid driver's license from another U.S. state, Canada, Germany, France, or the Republic of Korea do not need to take the knowledge exam."
+  },
+  {
+    "question": "Which country's license exempts you from the road skills test but not from the knowledge exam?",
+    "ground_truth": "Taiwan. A valid license from Taiwan exempts you from the road skills test, in addition to the U.S. states, Canada, Germany, France, and the Republic of Korea."
+  },
+  {
+    "question": "What does a diamond-shaped traffic sign indicate?",
+    "ground_truth": "A diamond-shaped sign is a warning sign that warns of special conditions or hazards ahead; you should slow down and drive with caution."
+  },
+  {
+    "question": "What does a pentagon-shaped (five-sided) sign indicate?",
+    "ground_truth": "A pentagon-shaped sign marks school zones and warns about school crossings."
+  },
+  {
+    "question": "What must you do at a traffic signal that is out of service and displaying no lights?",
+    "ground_truth": "You are required to stop and proceed through the intersection as though it were an all-way stop."
+  },
+  {
+    "question": "What does a red circle with a slash through it mean on a regulatory sign?",
+    "ground_truth": "It means NO (prohibition); the symbol inside the circle tells you what is prohibited."
+  },
+  {
+    "question": "What equipment must a vehicle have to be used for the road skills test?",
+    "ground_truth": "The vehicle must have a valid safety inspection sticker, license plates, registration card and decals, and working brakes, safety belts, horn, lights, turn signals, mirrors, and a speedometer."
+  },
+  {
+    "question": "What additional mandatory penalty applies to a DUI conviction involving a juvenile passenger age 17 or younger?",
+    "ground_truth": "An additional mandatory five-day jail term plus all other fines and jail sentences, and an additional fine of at least $500 and up to $1,000."
+  },
+  {
+    "question": "Under a learner's permit, who must be seated in the front passenger seat while you drive?",
+    "ground_truth": "A licensed driver at least 21 years of age who is alert and able to assist you. The licensed driver may be age 18, 19, or 20 if he or she is your legal guardian, sibling, half-sibling, or step-sibling."
+  },
+  {
+    "question": "What is the maximum vehicle weight you may operate with a regular (non-CDL) driver's license?",
+    "ground_truth": "Less than 26,001 pounds, for any vehicle or small truck that is exempt from commercial driver's license (CDL) requirements."
+  },
+  {
+    "question": "What does a 'No Passing Zone' sign mean?",
+    "ground_truth": "It marks the beginning of a no passing zone; you may not pass the cars ahead of you in your lane, even if the way is clear."
+  },
+  {
+    "question": "In a roundabout, which direction must traffic travel and who has the right-of-way?",
+    "ground_truth": "Traffic travels counter-clockwise, and entering traffic must yield the right-of-way to traffic already in the circle."
+  },
+  {
+    "question": "What counts as the 'passenger area' for an open alcohol container violation?",
+    "ground_truth": "The area that seats the driver and passengers and any area within the driver's reach, including an unlocked glove compartment."
   }
 ]

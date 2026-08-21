@@ -94,6 +94,9 @@ class Settings(BaseSettings):
     # Candidates pulled from each retriever before fusion.
     vector_top_k: int = 10
     bm25_top_k: int = 10
+    # Keyword retrieval. Set False for a dense-only (vector-only) baseline —
+    # used by the RAGAS A/B harness to measure the hybrid retrieval uplift.
+    use_bm25: bool = True
     # RRF dampening constant (standard default is 60).
     rrf_k: int = 60
     # How many fused candidates to keep (the reranker, if any, sees these).

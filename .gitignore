@@ -20,5 +20,9 @@ data/
 chroma/
 bm25_corpus/
 
+# Generated eval run artifacts (golden*.json ground truth IS tracked)
+backend/eval/results_*.json
+backend/eval/rows_*.json
+
 # VS Code
 .vscode/

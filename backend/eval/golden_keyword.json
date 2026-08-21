@@ -1,0 +1,43 @@
+[
+  { "question": "Which DMV form number is the behind-the-wheel checklist that describes specific driving tasks for the road skills test?", "ground_truth": "DMV form CSMA 19." },
+  { "question": "Which DMV publication number explains obtaining a Virginia driver's license or identification card?", "ground_truth": "DMV 141." },
+  { "question": "Which two form numbers make up the Commercial Driver License Manual?", "ground_truth": "DMV 60V and DMV 60A." },
+  { "question": "What is the maximum weight, in pounds, of a vehicle you may operate with a regular non-CDL driver's license?", "ground_truth": "Less than 26,001 pounds." },
+  { "question": "What additional fine range can be charged for a DUI conviction involving a juvenile passenger?", "ground_truth": "An additional fine of at least $500 and up to $1,000." },
+  { "question": "How many hours of community service are added for a second DUI offense with a juvenile in the vehicle?", "ground_truth": "An additional 80-hour community service requirement." },
+  { "question": "What percentage of people killed in Virginia crashes in 2024 were men?", "ground_truth": "71%." },
+
+  { "question": "What is the name of the Kaggle dataset used as the base distribution in the performative prediction experiments?", "ground_truth": "The GiveMeSomeCredit Kaggle credit scoring dataset." },
+  { "question": "In Definition 3.1 of the performative prediction paper, a distribution map is called epsilon-sensitive using which distance metric?", "ground_truth": "The Wasserstein-1 distance." },
+  { "question": "What does assumption (A1) call a loss whose gradient is beta-Lipschitz in the parameters and in z?", "ground_truth": "Beta-jointly smooth." },
+  { "question": "Whose fixed point theorem, a generalization of Brouwer's, is cited in the performative prediction paper?", "ground_truth": "Kakutani's fixed point theorem." },
+  { "question": "What term does the performative prediction paper give to the condition where the model has minimal loss on the distribution it entails?", "ground_truth": "Performative stability." },
+  { "question": "Which concurrent work analyzes retraining in the context of causal discovery in linear models?", "ground_truth": "Bechavod et al." },
+
+  { "question": "In financial policy-making, the problem of gaming a classifier is widely known as what law?", "ground_truth": "Goodhart's law." },
+  { "question": "What term refers to strategic individuals manipulating their attributes to obtain a better classification outcome?", "ground_truth": "Gaming." },
+  { "question": "Theorem 2.3 of the strategic classification paper assumes the cost function c has what property?", "ground_truth": "It is separable." },
+  { "question": "Who are the authors of the Strategic Classification paper besides Moritz Hardt?", "ground_truth": "Nimrod Megiddo, Christos Papadimitriou, and Mary Wootters." },
+  { "question": "What kinds of welfare decisions about strategic individuals motivate the strategic classification setting?", "ground_truth": "Decisions about employment, education, and health." },
+
+  { "question": "Which dataset does the joint semantic segmentation and depth estimation paper use, outperforming state-of-the-art on semantic segmentation?", "ground_truth": "The NYUDepth V2 dataset." },
+  { "question": "What two tasks does the joint segmentation/depth model perform simultaneously from a single RGB image?", "ground_truth": "Semantic segmentation and depth estimation." },
+  { "question": "Instead of training independently per task, the joint segmentation/depth network is trained under what kind of loss?", "ground_truth": "A multi-task loss." },
+  { "question": "Who are the authors of the joint semantic segmentation and depth estimation paper?", "ground_truth": "Arsalan Mousavian, Hamed Pirsiavash, and Jana Kosecka." },
+  { "question": "Which dataset titled 'Learning 3D scene structure from a single still image' is referenced for depth?", "ground_truth": "Make3D." },
+
+  { "question": "What does the acronym TRAVEL stand for in the vision-and-language navigation paper?", "ground_truth": "Training-Free Retrieval and Alignment for Vision-and-Language Navigation." },
+  { "question": "Which two instruction benchmarks does the TRAVEL paper use for evaluation?", "ground_truth": "R2R (R2R-Habitat) and RxR." },
+  { "question": "Which 3D indoor environments provide the agent with panoramic images in the TRAVEL paper?", "ground_truth": "Matterport3D." },
+  { "question": "In the TRAVEL paper's Success Rate metric, an episode is successful if the agent's last position is within how many meters of the goal?", "ground_truth": "Within 3 meters." },
+  { "question": "Which prior method used CLIP VLMs for grounding instruction phrases and GPT-3 for decomposition?", "ground_truth": "CLIP-Nav." },
+  { "question": "What algorithm does TRAVEL run on the topological map to generate path hypotheses to the last landmark?", "ground_truth": "The shortest path algorithm (over the top-k locations of the last landmark)." },
+
+  { "question": "What is SemNav and what task does it address?", "ground_truth": "SemNav is a model-based planner for zero-shot object goal navigation using vision-foundation models." },
+  { "question": "Which dataset and simulator does SemNav use for evaluation?", "ground_truth": "The HM3D dataset using the Habitat simulator." },
+  { "question": "What do the metrics SR and SPL stand for in the SemNav paper?", "ground_truth": "Success Rate (SR) and Success weighted by Path Length (SPL)." },
+  { "question": "Which model does SemNav use for detecting candidate objects and rooms?", "ground_truth": "GLIP." },
+  { "question": "Which LLM does SemNav query with the current RGB image and the target object to estimate likelihood?", "ground_truth": "GPT-4o." },
+  { "question": "Which model does SemNav use to generate a segmentation mask of the object?", "ground_truth": "SAM." },
+  { "question": "Which open-set object detection model ('marrying DINO with grounded pre-training') is referenced by SemNav?", "ground_truth": "Grounding DINO." }
+]

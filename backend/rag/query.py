@@ -210,7 +210,7 @@ def _retrieve(
         corpus = [doc for doc in corpus if doc.metadata.get("filename") == filename]
 
     bm25_docs: list[Document] = []
-    if corpus:
+    if corpus and settings.use_bm25:
         bm25_retriever = BM25Retriever.from_documents(corpus)
         bm25_retriever.k = settings.bm25_top_k
         bm25_docs = bm25_retriever.invoke(retrieval_query)

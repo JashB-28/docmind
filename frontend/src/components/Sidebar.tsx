@@ -2,12 +2,12 @@ import { useRef, useState } from "react";
 import { getDocumentUrl } from "../lib/api";
 import type { Health, Provider } from "../types";
 
-const OPENAI_MODELS = ["gpt-4o-mini", "gpt-4o", "gpt-3.5-turbo"];
+const OPENAI_MODELS = ["GPT 4o mini", "GPT 4o", "GPT 3.5 turbo"];
 const OLLAMA_MODELS = ["mistral", "llama3", "llama3.2", "phi3", "gemma2"];
 const BEDROCK_MODELS = [
-  "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
-  "us.anthropic.claude-haiku-4-5-20251001-v1:0",
-  "us.anthropic.claude-opus-4-5-20251101-v1:0",
+  "Claude Sonnet 4.5",
+  "Claude Haiku 4.5",
+  "Claude Opus 4.5",
 ];
 
 const MODELS_BY_PROVIDER: Record<Provider, string[]> = {

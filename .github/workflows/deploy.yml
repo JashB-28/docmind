@@ -54,7 +54,7 @@ jobs:
             --instance-ids "$INSTANCE_ID" \
             --document-name "AWS-RunShellScript" \
             --comment "Deploy DocMind ${{ github.sha }}" \
-            --parameters commands="git config --global --get-all safe.directory | grep -qx $DEPLOY_DIR || git config --global --add safe.directory $DEPLOY_DIR; cd $DEPLOY_DIR && git pull --ff-only && bash deploy/deploy.sh" \
+            --parameters commands="export HOME=/root; git config --global --get-all safe.directory | grep -qx $DEPLOY_DIR || git config --global --add safe.directory $DEPLOY_DIR; cd $DEPLOY_DIR && git pull --ff-only && bash deploy/deploy.sh" \
             --region "$AWS_REGION" \
             --query Command.CommandId --output text)
           echo "SSM command sent: $CMD_ID — waiting for the box to finish..."

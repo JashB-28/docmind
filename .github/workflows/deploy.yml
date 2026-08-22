@@ -1,11 +1,11 @@
 name: Deploy (CD)
 
-# Manual button by default so it never runs until you've configured the secrets.
-# To deploy automatically on every merge to main, uncomment the `push` trigger.
+# Deploys automatically on every push to main; the manual button remains
+# available for re-deploys without a code change.
 on:
   workflow_dispatch:
-  # push:
-  #   branches: [main]
+  push:
+    branches: [main]
 
 permissions:
   id-token: write   # for GitHub OIDC → AWS (used by the SSM deploy step)

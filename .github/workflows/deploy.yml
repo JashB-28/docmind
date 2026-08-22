@@ -48,10 +48,39 @@ jobs:
       - name: Deploy on EC2 via SSM Run Command
         env:
           DEPLOY_DIR: ${{ vars.DEPLOY_DIR || '/home/ec2-user/docmind' }}
+          INSTANCE_ID: ${{ secrets.EC2_INSTANCE_ID }}
         run: |
-          aws ssm send-command \
-            --instance-ids "${{ secrets.EC2_INSTANCE_ID }}" \
+          CMD_ID=$(aws ssm send-command \
+            --instance-ids "$INSTANCE_ID" \
             --document-name "AWS-RunShellScript" \
             --comment "Deploy DocMind ${{ github.sha }}" \
             --parameters commands="cd $DEPLOY_DIR && git pull --ff-only && bash deploy/deploy.sh" \
-            --region "$AWS_REGION"
+            --region "$AWS_REGION" \
+            --query Command.CommandId --output text)
+          echo "SSM command sent: $CMD_ID — waiting for the box to finish..."
+
+          # send-command only queues the deploy; poll until it actually finishes
+          # on the instance so a box-side failure fails this workflow (up to 5 min).
+          STATUS=Pending
+          for _ in $(seq 1 60); do
+            STATUS=$(aws ssm get-command-invocation \
+              --command-id "$CMD_ID" --instance-id "$INSTANCE_ID" \
+              --region "$AWS_REGION" \
+              --query Status --output text 2>/dev/null || echo Pending)
+            case "$STATUS" in
+              Success|Failed|Cancelled|TimedOut|Undeliverable|Terminated) break ;;
+            esac
+            sleep 5
+          done
+
+          echo "=== box stdout ==="
+          aws ssm get-command-invocation --command-id "$CMD_ID" \
+            --instance-id "$INSTANCE_ID" --region "$AWS_REGION" \
+            --query StandardOutputContent --output text
+          echo "=== box stderr ==="
+          aws ssm get-command-invocation --command-id "$CMD_ID" \
+            --instance-id "$INSTANCE_ID" --region "$AWS_REGION" \
+            --query StandardErrorContent --output text
+
+          echo "Deploy status: $STATUS"
+          [ "$STATUS" = "Success" ]

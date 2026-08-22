@@ -54,7 +54,7 @@ jobs:
             --instance-ids "$INSTANCE_ID" \
             --document-name "AWS-RunShellScript" \
             --comment "Deploy DocMind ${{ github.sha }}" \
-            --parameters commands="cd $DEPLOY_DIR && git pull --ff-only && bash deploy/deploy.sh" \
+            --parameters commands="git config --global --get-all safe.directory | grep -qx $DEPLOY_DIR || git config --global --add safe.directory $DEPLOY_DIR; cd $DEPLOY_DIR && git pull --ff-only && bash deploy/deploy.sh" \
             --region "$AWS_REGION" \
             --query Command.CommandId --output text)
           echo "SSM command sent: $CMD_ID — waiting for the box to finish..."
@@ -73,10 +73,20 @@ jobs:
             sleep 5
           done
 
-          echo "=== box stdout ==="
-          aws ssm get-command-invocation --command-id "$CMD_ID" \
+          set +e
+          OUT=$(aws ssm get-command-invocation --command-id "$CMD_ID" \
             --instance-id "$INSTANCE_ID" --region "$AWS_REGION" \
-            --query StandardOutputContent --output text
+            --query StandardOutputContent --output text 2>&1)
+          RC=$?
+          set -e
+          if [ $RC -ne 0 ]; then
+            echo "$OUT"
+            echo "::error::Cannot read the box's result — the deploy role needs ssm:GetCommandInvocation. The command may still have run; check the site or SSM Run Command history (command $CMD_ID)."
+            exit 1
+          fi
+
+          echo "=== box stdout ==="
+          echo "$OUT"
           echo "=== box stderr ==="
           aws ssm get-command-invocation --command-id "$CMD_ID" \
             --instance-id "$INSTANCE_ID" --region "$AWS_REGION" \

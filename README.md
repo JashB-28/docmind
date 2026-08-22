@@ -13,7 +13,7 @@ Supports both OpenAI cloud models and local Ollama models.
 
 ```
                          ┌──────────────────────────┐
-   React + Vite SPA  ─── │  FastAPI backend (/api)   │
+   React + Vite SPA  ─── │  FastAPI backend (/api)  │
    (streams tokens)      │                          │
         ▲                │  /documents/ingest       │
         │  SSE           │  /query   (SSE stream)   │
@@ -21,7 +21,7 @@ Supports both OpenAI cloud models and local Ollama models.
         └──────────────  │                          │
                          └─────────┬────────────────┘
                                    │
-          ┌──────────────┬──────────┴───┬──────────────┬──────────────┐
+          ┌──────────────┬─────────┴───┬──────────────┬──────────────┐
      Pinecone        In-RAM BM25     S3 (source     OpenAI / Bedrock
      (vectors,       + session       PDFs, presigned  / Ollama
      per-session     store           URLs, ephemeral) (LLM + embeddings)

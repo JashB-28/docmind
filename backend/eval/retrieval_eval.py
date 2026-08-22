@@ -63,7 +63,7 @@ def run_config(label, cfg):
 
     ranks, fires = [], 0
     t0 = time.perf_counter()
-    for q, pat in zip(QUESTIONS, PATS):
+    for q, pat in zip(QUESTIONS, PATS, strict=True):
         docs, _, rr = _retrieve(q, None, "openai", "", None, None)
         if rr:  # rerank_score_map non-empty => the reranker actually fired
             fires += 1
@@ -88,7 +88,7 @@ for label, cfg in CONFIGS:
 
 base = next(r for r in rows if r[0] == "dense")
 print("\nvs dense baseline (MRR):")
-for label, r5, r10, mrr, fires, dt in rows:
+for label, _r5, r10, mrr, _fires, _dt in rows:
     if label == "dense":
         continue
     print(f"  {label:18} MRR {(mrr-base[3])/base[3]*100:+6.1f}%   recall@10 {(r10-base[2])/base[2]*100:+5.1f}%")

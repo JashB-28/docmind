@@ -40,7 +40,7 @@ def analyze(path: str):
     rows = json.load(open(path, encoding="utf-8"))["rows"]
     assert len(rows) == len(KEYS), f"{len(rows)} rows vs {len(KEYS)} keys"
     results = []
-    for row, key in zip(rows, KEYS):
+    for row, key in zip(rows, KEYS, strict=True):
         pat = make_pattern(key)
         rank = first_hit_rank(row["retrieved_contexts"], pat)
         results.append((key, rank))
@@ -53,7 +53,7 @@ d = analyze("backend/eval/rows_kw_dense.json")
 print(f"{'token':24}{'hybrid':>8}{'dense':>8}   note")
 hh = dd = 0
 mrr_h = mrr_d = 0.0
-for (k, rh), (_, rd) in zip(h, d):
+for (k, rh), (_, rd) in zip(h, d, strict=True):
     hh += rh > 0
     dd += rd > 0
     mrr_h += (1.0 / rh) if rh else 0.0

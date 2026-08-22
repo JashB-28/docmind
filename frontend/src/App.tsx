@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import BotAvatar from "./components/BotAvatar";
 import MessageBubble from "./components/MessageBubble";
-import Sidebar from "./components/Sidebar";
+import Sidebar, { modelLabel } from "./components/Sidebar";
 import {
   clearDocuments,
   getHealth,
@@ -165,7 +165,7 @@ export default function App() {
               <div className="brand-sub">
                 {provider === "openai" ? "OpenAI" : provider === "bedrock" ? "Bedrock" : "Ollama"}
                 {" · "}
-                {model}
+                {modelLabel(model)}
               </div>
             </div>
           </div>
